@@ -17,12 +17,10 @@ Config (set in CTFd admin panel → Plugins → IsolateX):
   ISOLATEX_URL      URL of the orchestrator  e.g. http://orchestrator:8080
   ISOLATEX_API_KEY  Shared secret            (generate with: openssl rand -hex 32)
 """
-from flask import Blueprint, jsonify, request, session
-from CTFd.models import db, Challenges
+from flask import Blueprint, jsonify
 from CTFd.utils.decorators import authed_only
 from CTFd.utils.user import get_current_team, get_current_user
 from CTFd.plugins import register_plugin_assets_directory
-from CTFd.plugins.challenges import CHALLENGE_CLASSES, BaseChallenge
 import httpx
 import os
 
@@ -43,6 +41,16 @@ def _team_id() -> str:
         return f"team-{team.id}"
     user = get_current_user()
     return f"user-{user.id}"
+
+
+def _get_team_instance(challenge_id: str):
+    tid = _team_id()
+    resp = httpx.get(
+        f"{ORCHESTRATOR_URL}/instances/team/{tid}/{challenge_id}",
+        headers=_headers(),
+        timeout=10.0,
+    )
+    return resp
 
 
 @blueprint.route("/instance/<challenge_id>", methods=["POST"])
@@ -70,13 +78,8 @@ def launch_instance(challenge_id: str):
 @blueprint.route("/instance/<challenge_id>", methods=["GET"])
 @authed_only
 def get_instance(challenge_id: str):
-    tid = _team_id()
     try:
-        resp = httpx.get(
-            f"{ORCHESTRATOR_URL}/instances/team/{tid}/{challenge_id}",
-            headers=_headers(),
-            timeout=10.0,
-        )
+        resp = _get_team_instance(challenge_id)
         if resp.status_code == 404:
             return jsonify({"status": "none"}), 200
         resp.raise_for_status()
@@ -85,16 +88,24 @@ def get_instance(challenge_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@blueprint.route("/instance/<instance_id>/stop", methods=["DELETE"])
+@blueprint.route("/instance/<challenge_id>", methods=["DELETE"])
 @authed_only
-def stop_instance(instance_id: str):
+def stop_instance(challenge_id: str):
     try:
+        instance_resp = _get_team_instance(challenge_id)
+        if instance_resp.status_code == 404:
+            return jsonify({"status": "none"}), 200
+        instance_resp.raise_for_status()
+        instance_id = instance_resp.json()["id"]
         resp = httpx.delete(
             f"{ORCHESTRATOR_URL}/instances/{instance_id}",
             headers=_headers(),
             timeout=15.0,
         )
+        resp.raise_for_status()
         return jsonify({"status": "stopped"}), 200
+    except httpx.HTTPStatusError as e:
+        return jsonify({"error": e.response.text}), e.response.status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -7,6 +7,8 @@ kCTF is Google's CTF infrastructure framework. It uses Kubernetes with nsjail
 This adapter talks to a Kubernetes cluster (fresh setup in infra/kctf/) and
 manages per-team kCTF challenge deployments.
 
+In the documented ladder, this is the plain `kCTF` tier.
+
 Security model:
 - Each team gets their own Kubernetes Pod
 - nsjail provides an additional isolation layer inside the pod
@@ -64,9 +66,7 @@ class KCTFAdapter(RuntimeAdapter):
 
     async def destroy(self, instance_id: str) -> None:
         meta = self._instances.pop(instance_id, None)
-        if not meta:
-            return
-        name = meta["pod_name"]
+        name = meta["pod_name"] if meta else f"isolatex-{instance_id[:16]}"
         await asyncio.to_thread(self._delete_pod, name)
         await asyncio.to_thread(self._delete_service, name)
         log.info("kctf instance destroyed", instance_id=instance_id, pod=name)

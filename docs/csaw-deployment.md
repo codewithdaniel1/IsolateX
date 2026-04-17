@@ -15,11 +15,12 @@ Two-tier isolation strategy:
 
 ### Tier 1: Easy/Medium Challenges
 
-Runtime: **Kata + kCTF**
+Tier: **Kata + kCTF**
+Code mapping: **`kata`**
 
 **Challenges:** web, crypto, reversing, easy misc
 
-**Why Kata + kCTF:**
+**Why this deployment pattern:**
 - Cost-efficient (Kubernetes is good at packing)
 - Strong isolation (guest kernel blocks kernel exploits)
 - No per-team microVM overhead
@@ -35,7 +36,8 @@ Runtime: **Kata + kCTF**
 
 ### Tier 2: Hard Challenges
 
-Runtime: **Firecracker**
+Tier: **Kata + FC / FC**
+Code mapping: **`firecracker`**
 
 **Challenges:** pwn, RCE, AI/code execution, hardcore reversing
 
@@ -152,10 +154,19 @@ spec:
 EOF
 ```
 
-### 5. kCTF Worker Agent (Kubernetes)
+### 5. Kata Worker Agent (Kubernetes)
 
-The orchestrator talks to the Kubernetes API directly.
-No separate worker agent needed for Tier 1.
+Tier 1 still uses an IsolateX worker agent. Run workers with `RUNTIME=kata`
+on hosts that can reach the Kubernetes API and have the Kata runtime configured.
+
+```bash
+RUNTIME=kata \
+KUBECONFIG=/etc/rancher/k3s/k3s.yaml \
+KCTF_NAMESPACE=kctf \
+ORCHESTRATOR_URL=http://orchestrator.isolatex:8080 \
+ORCHESTRATOR_API_KEY=$API_KEY \
+uvicorn worker.main:app --host 0.0.0.0 --port 9090
+```
 
 ### 6. Firecracker Worker Agents (Hard challenges)
 
@@ -183,7 +194,7 @@ kubectl apply -f gateway/traefik/
 
 Before the event, register all challenges:
 
-### Easy/Medium (Kata + kCTF)
+### Easy/Medium (`kata` on kCTF/Kubernetes)
 
 ```bash
 curl -X POST http://orchestrator:8080/challenges \
@@ -193,7 +204,6 @@ curl -X POST http://orchestrator:8080/challenges \
     "id": "web100",
     "name": "Easy Web",
     "runtime": "kata",
-    "runtime_class": "kata",
     "image": "ghcr.io/osiris/web100:latest",
     "port": 8080,
     "memory_mb": 256,

@@ -7,8 +7,8 @@ A production-ready, multi-runtime challenge isolation platform for CTFd with sup
 - **Docker** (weak isolation, fast, cheap)
 - **kCTF** (medium isolation, standard Kubernetes)
 - **Kata + kCTF** (strong isolation, Kubernetes + guest kernel)
-- **Kata + Firecracker** (very strong, Kubernetes routing to direct microVMs)
-- **Raw Firecracker** (strongest, full control)
+- **Kata + FC** (very strong, VM-backed isolation tier)
+- **FC** (strongest, full control)
 
 ---
 
@@ -28,9 +28,8 @@ A production-ready, multi-runtime challenge isolation platform for CTFd with sup
 - `worker/adapters/` — Runtime implementations
   - `docker.py` — hardened containers
   - `kctf.py` — Kubernetes pods
-  - `kata.py` — **Kata Containers (NEW)**
+  - `kata.py` — Kata Containers
   - `firecracker.py` — Firecracker microVMs
-  - `cloud_hypervisor.py` — Cloud Hypervisor microVMs
   - `base.py` — interface for new runtimes
 - Registry pattern: add runtime → add adapter → register in __init__.py
 
@@ -67,11 +66,11 @@ A production-ready, multi-runtime challenge isolation platform for CTFd with sup
 - `docs/architecture.md` — Full system architecture + ASCII diagrams
 
 **Event deployment:**
-- `docs/csaw-deployment.md` — **CSAW 2026 setup** (Kata+kCTF + Kata+Firecracker)
+- `docs/csaw-deployment.md` — **CSAW 2026 setup** (`kata+kCTF` and `kata+FC` / `FC` model)
 
 **Setup guides:**
 - `docs/kctf-setup.md` — kCTF cluster creation
-- `docs/kata-setup.md` — **Kata Containers setup (NEW)**
+- `docs/kata-setup.md` — Kata Containers setup
 - `docs/firecracker-host-setup.md` — Firecracker host preparation
 
 **Operations:**
@@ -91,7 +90,8 @@ A production-ready, multi-runtime challenge isolation platform for CTFd with sup
 
 **Tier 1: Easy/Medium challenges**
 ```
-Runtime: Kata + kCTF
+Tier: Kata + kCTF
+Code mapping: kata
 Isolation: ⭐⭐⭐⭐
 Cost: $$$ (per event)
 Use for: web, crypto, reversing, easy misc
@@ -99,7 +99,8 @@ Use for: web, crypto, reversing, easy misc
 
 **Tier 2: Hard challenges**
 ```
-Runtime: Kata + Firecracker
+Tier: Kata + FC / FC
+Code mapping: firecracker
 Isolation: ⭐⭐⭐⭐⭐
 Cost: $$$$ (per event)
 Use for: pwn, RCE, AI/code execution
@@ -113,15 +114,14 @@ This balances:
 
 ---
 
-## What to build next
+## What to do next
 
-1. **Implement the Kata adapter** (just did — `worker/adapters/kata.py`)
-2. **Test locally** with Docker Compose
-3. **Deploy kCTF cluster** for easy/medium challenges
-4. **Deploy Firecracker pool** for hard challenges
-5. **Register challenges** in the orchestrator
-6. **Plugin CTFd** via the IsolateX plugin
-7. **Event day:** monitor and adjust
+1. **Test locally** with Docker Compose
+2. **Deploy kCTF cluster** for easy/medium challenges
+3. **Deploy Firecracker pool** for hard challenges
+4. **Register challenges** in the orchestrator
+5. **Plugin CTFd** via the IsolateX plugin
+6. **Event day:** monitor and adjust
 
 Realistic timeline: 2-3 weeks to production-ready for CSAW.
 
@@ -150,9 +150,8 @@ IsolateX/
 │   │   ├── base.py                    ← interface
 │   │   ├── docker.py                  ← weak isolation
 │   │   ├── kctf.py                    ← medium isolation
-│   │   ├── kata.py                    ← strong isolation (NEW)
+│   │   ├── kata.py                    ← strong isolation
 │   │   ├── firecracker.py             ← strongest (direct)
-│   │   ├── cloud_hypervisor.py        ← strongest (alt)
 │   │   └── __init__.py                ← registry
 │   ├── networking/                    ← tap helpers
 │   └── Dockerfile
@@ -205,5 +204,3 @@ IsolateX/
 6. Register challenges in the orchestrator
 7. Deploy the CTFd plugin
 8. Event day!
-
-

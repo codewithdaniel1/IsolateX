@@ -60,7 +60,7 @@
         startCountdown(ttlEl, expiresAt);
         btn.textContent = "Stop Instance";
         btn.disabled = false;
-        btn.onclick = () => stopInstance(data.id, challengeId);
+        btn.onclick = () => stopInstance(challengeId);
       } else if (status === "pending") {
         statusEl.textContent = "Starting… (this may take a few seconds)";
         btn.textContent = "Starting…";
@@ -108,13 +108,13 @@
     }
   }
 
-  async function stopInstance(instanceId, challengeId) {
+  async function stopInstance(challengeId) {
     const btn = document.getElementById(`ix-btn-${challengeId}`);
     btn.disabled = true;
     btn.textContent = "Stopping…";
 
     try {
-      await fetch(`/isolatex/instance/${instanceId}/stop`, { method: "DELETE" });
+      await fetch(`/isolatex/instance/${challengeId}`, { method: "DELETE" });
     } catch (err) {
       console.error("Stop failed:", err);
     }

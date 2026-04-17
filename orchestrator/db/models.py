@@ -21,11 +21,13 @@ class InstanceStatus(str, enum.Enum):
 
 
 class RuntimeType(str, enum.Enum):
+    # Platform spectrum order in docs:
+    # docker -> kCTF -> kata+kCTF -> kata+FC -> FC
+    # Actual runtime strings remain the four enum values below.
     docker           = "docker"           # weak isolation, fast, cheap
     kctf             = "kctf"             # medium isolation, standard k8s
-    kata             = "kata"             # strong isolation, k8s + guest kernel
-    firecracker      = "firecracker"      # strongest isolation, direct microVM
-    cloud_hypervisor = "cloud_hypervisor" # strong isolation alternative to Firecracker
+    kata             = "kata"             # Kata + kCTF tier
+    firecracker      = "firecracker"      # Kata + FC / FC tier
     # Extend here for future runtimes — see docs/adding-a-runtime.md
 
 
@@ -39,6 +41,7 @@ class Instance(Base):
     runtime      = Column(SAEnum(RuntimeType), nullable=False)
     status       = Column(SAEnum(InstanceStatus), nullable=False, default=InstanceStatus.pending)
     endpoint     = Column(String, nullable=True)
+    backend_port = Column(Integer, nullable=True)
     flag         = Column(String, nullable=True)
     expires_at   = Column(DateTime(timezone=True), nullable=False)
     created_at   = Column(DateTime(timezone=True), server_default=func.now())

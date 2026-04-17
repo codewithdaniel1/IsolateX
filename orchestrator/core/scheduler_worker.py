@@ -18,10 +18,10 @@ async def pick_worker(db: AsyncSession, runtime: RuntimeType) -> Worker | None:
         seconds=settings.worker_heartbeat_timeout_seconds
     )
 
-    # Count running instances per worker
+    # Count both in-flight and active instances per worker.
     subq = (
         select(Instance.worker_id, func.count(Instance.id).label("count"))
-        .where(Instance.status == InstanceStatus.running)
+        .where(Instance.status.in_([InstanceStatus.pending, InstanceStatus.running]))
         .group_by(Instance.worker_id)
         .subquery()
     )

@@ -24,8 +24,6 @@ without needing KVM or a Kubernetes cluster.
 """
 import asyncio
 import json
-import subprocess
-import shlex
 import structlog
 
 from worker.adapters.base import RuntimeAdapter, LaunchRequest, LaunchResult
@@ -37,25 +35,36 @@ log = structlog.get_logger()
 class DockerAdapter(RuntimeAdapter):
     def __init__(self):
         self._instances: dict[str, dict] = {}
-        asyncio.get_event_loop().run_until_complete(self._ensure_network())
+        self._network_ready = False
+        self._network_lock = asyncio.Lock()
 
     async def _ensure_network(self):
-        try:
-            await _run("docker", "network", "inspect", settings.docker_network,
-                       capture=True, check=False)
-        except Exception:
-            pass
-        await _run(
-            "docker", "network", "create",
-            "--driver", "bridge",
-            "--opt", "com.docker.network.bridge.enable_icc=false",
-            "--opt", "com.docker.network.bridge.enable_ip_masquerade=true",
-            "--internal",
-            settings.docker_network,
-            check=False,
-        )
+        if self._network_ready:
+            return
+
+        async with self._network_lock:
+            if self._network_ready:
+                return
+
+            try:
+                await _run("docker", "network", "inspect", settings.docker_network,
+                           capture=True, check=False)
+            except Exception:
+                pass
+            await _run(
+                "docker", "network", "create",
+                "--driver", "bridge",
+                "--opt", "com.docker.network.bridge.enable_icc=false",
+                "--opt", "com.docker.network.bridge.enable_ip_masquerade=true",
+                "--internal",
+                settings.docker_network,
+                check=False,
+            )
+            self._network_ready = True
 
     async def launch(self, req: LaunchRequest) -> LaunchResult:
+        await self._ensure_network()
+
         if req.instance_id in self._instances:
             return LaunchResult(
                 port=self._instances[req.instance_id]["host_port"],
@@ -72,7 +81,7 @@ class DockerAdapter(RuntimeAdapter):
             "docker", "run", "-d",
             "--name", container_name,
             "--network", network,
-            "--publish", f"127.0.0.1:{host_port}:{req.port}",
+            "--publish", f"{settings.docker_bind_host}:{host_port}:{req.port}",
             "--env", f"ISOLATEX_FLAG={req.flag}",
             "--env", f"ISOLATEX_PORT={req.port}",
             "--label", f"{settings.docker_label_prefix}.instance_id={req.instance_id}",
@@ -87,13 +96,8 @@ class DockerAdapter(RuntimeAdapter):
             "--cap-drop", "ALL",
             "--no-new-privileges",
             "--security-opt", "no-new-privileges:true",
-            "--security-opt", "seccomp=unconfined",  # use default seccomp
             req.image,
         ]
-
-        # Remove --security-opt seccomp=unconfined if default profile desired
-        # (above passes "unconfined" only as placeholder — replace with your
-        #  seccomp profile path in production)
 
         await _run(*cmd)
         metadata = {"host_port": host_port, "container_name": container_name}

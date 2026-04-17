@@ -63,7 +63,6 @@ from worker.adapters.my_runtime import MyRuntimeAdapter
 
 ADAPTERS: dict[str, type[RuntimeAdapter]] = {
     "firecracker":      FirecrackerAdapter,
-    "cloud_hypervisor": CloudHypervisorAdapter,
     "kctf":             KCTFAdapter,
     "docker":           DockerAdapter,
     "my_runtime":       MyRuntimeAdapter,   # ← add this
@@ -79,7 +78,6 @@ Open `orchestrator/db/models.py` and add to `RuntimeType`:
 ```python
 class RuntimeType(str, enum.Enum):
     firecracker      = "firecracker"
-    cloud_hypervisor = "cloud_hypervisor"
     kctf             = "kctf"
     docker           = "docker"
     my_runtime       = "my_runtime"    # ← add this

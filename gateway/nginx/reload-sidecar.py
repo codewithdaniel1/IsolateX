@@ -65,6 +65,23 @@ upstream isolatex_{key} {{
     server {upstream_url};
     keepalive 4;
 }}
+
+server {{
+    listen 443 ssl;
+    server_name {host};
+
+    ssl_certificate     /etc/letsencrypt/live/ctf.osiris.sh/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/ctf.osiris.sh/privkey.pem;
+
+    location / {{
+        proxy_pass http://isolatex_{key};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        limit_req zone=challenge burst=10 nodelay;
+    }}
+}}
 """
     path = CONF_DIR / f"{key}.conf"
     path.write_text(conf)

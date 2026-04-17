@@ -9,15 +9,17 @@ class WorkerSettings(BaseSettings):
     listen_port: int = 9090
     orchestrator_url: str = "http://orchestrator:8080"
     orchestrator_api_key: str = ""
+    advertise_address: str = ""
 
     # Which runtime this worker handles
     # Each worker process handles exactly ONE runtime type.
     # Run separate worker processes for separate runtimes.
-    runtime: str = "docker"  # firecracker | cloud_hypervisor | kctf | docker
+    # Platform ladder in docs: docker -> kCTF -> kata+kCTF -> kata+FC -> FC
+    # Actual runtime strings here: docker | kctf | kata | firecracker
+    runtime: str = "docker"
 
-    # Firecracker / Cloud Hypervisor
+    # Firecracker
     firecracker_bin: str = "/usr/local/bin/firecracker"
-    cloud_hypervisor_bin: str = "/usr/local/bin/cloud-hypervisor"
     jailer_bin: str = "/usr/local/bin/jailer"
     firecracker_run_dir: str = "/run/isolatex/firecracker"
     firecracker_uid: int = 10000
@@ -32,6 +34,7 @@ class WorkerSettings(BaseSettings):
     # Docker
     docker_network: str = "isolatex_challenges"
     docker_label_prefix: str = "isolatex"
+    docker_bind_host: str = "127.0.0.1"
 
     # Port allocation
     port_range_start: int = 30000

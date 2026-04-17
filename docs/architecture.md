@@ -47,15 +47,14 @@ destroys it automatically when the TTL expires.
                           │           POST /heartbeat              │  │
                           └─┬───────┬─────────┬──────────┬────────┬┘──┘
                             │       │         │          │        │
-                     ┌──────▼─┐  ┌──▼────┐ ┌──▼────┐ ┌───▼───┐ ┌──▼──┐
-                     │Docker  │  │ kCTF  │ │Kata + │ │Kata+  │ │ Raw │
-                     │        │  │ Pod   │ │ kCTF  │ │  FC   │ │ FC  │
-                     │ weak   │  │medium │ │strong │ │ very  │ │full │
-                     │        │  │       │ │       │ │strong │ │     │
-                     │        │  │       │ │       │ │       │ │     │
-                     └────────┘  └───────┘ └───────┘ └───────┘ └─────┘
-                                 (nsjail+   (nsjail+   (k8s→    (KVM+
-                                NetworkPol)  guest)   microVM)  direct)
+                     ┌──────▼─┐  ┌──▼────┐ ┌──▼──────┐ ┌──▼────┐ ┌──▼──┐
+                     │Docker  │  │ kCTF  │ │Kata+kCTF│ │Kata+FC│ │ FC │
+                     │        │  │ Pod   │ │         │ │       │ │    │
+                     │ weak   │  │medium │ │ strong  │ │ vstrong│ │max │
+                     │        │  │       │ │         │ │       │ │    │
+                     └────────┘  └───────┘ └─────────┘ └────────┘ └────┘
+                                 (nsjail)   (guest      (VM-     (KVM,
+                                            kernel)      backed)   direct)
 
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     Data Layer                                      │
@@ -93,7 +92,7 @@ destroys it automatically when the TTL expires.
    d. Creates Instance record (status=pending)
    e. Fires background task to call worker
 8. Worker agent receives POST /launch
-9. Worker launches Firecracker/Docker/kCTF pod
+9. Worker launches the selected runtime tier for that challenge
 10. Worker returns {port: NNNNN}
 11. Orchestrator registers route with gateway
 12. Orchestrator updates Instance: status=running, endpoint=https://...
@@ -103,6 +102,8 @@ destroys it automatically when the TTL expires.
 16. Worker tears down runtime, wipes volumes
 17. Orchestrator marks instance destroyed, deregisters gateway route
 ```
+
+Note: `Kata + kCTF` and `Kata + FC` are strategy labels in this codebase. The actual runtime strings remain `docker`, `kctf`, `kata`, and `firecracker`.
 
 ## Component Map
 
@@ -120,7 +121,6 @@ IsolateX/
       kctf.py          Kubernetes + nsjail adapter
       kata.py          Kubernetes + Kata (guest kernel) adapter
       firecracker.py   Firecracker microVM adapter (direct)
-      cloud_hypervisor.py  Cloud Hypervisor adapter (direct)
       __init__.py      Registry — add new runtimes here
     networking/        tap device helpers (microVMs)
 

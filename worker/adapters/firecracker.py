@@ -17,6 +17,8 @@ Requirements on the host:
 - iproute2 installed (ip, tc commands)
 - Run as root or with CAP_NET_ADMIN for tap setup
 
+In the documented ladder, this adapter covers the `kata+FC` / `FC` end of the spectrum.
+
 See docs/firecracker-host-setup.md for full host preparation steps.
 """
 import asyncio
@@ -72,6 +74,7 @@ class FirecrackerAdapter(RuntimeAdapter):
         config_path.write_text(json.dumps(fc_config, indent=2))
 
         pid = await _start_jailer(req.instance_id, config_path, jail_dir)
+        (jail_dir / "firecracker.pid").write_text(str(pid))
 
         metadata = {
             "host_port": host_port,
@@ -86,11 +89,12 @@ class FirecrackerAdapter(RuntimeAdapter):
 
     async def destroy(self, instance_id: str) -> None:
         meta = self._instances.pop(instance_id, None)
-        if not meta:
-            return
+        jail_dir = Path(settings.firecracker_run_dir) / instance_id
+        pid_file = jail_dir / "firecracker.pid"
+        pid = meta.get("pid") if meta else _read_pid(pid_file)
+        tap = meta.get("tap_name") if meta else f"tap_{instance_id[:8]}"
 
         # Kill the Firecracker process
-        pid = meta.get("pid")
         if pid:
             try:
                 os.kill(pid, 15)  # SIGTERM
@@ -103,7 +107,6 @@ class FirecrackerAdapter(RuntimeAdapter):
                 pass
 
         # Remove tap device
-        tap = meta.get("tap_name")
         if tap:
             try:
                 await delete_tap(tap)
@@ -111,8 +114,7 @@ class FirecrackerAdapter(RuntimeAdapter):
                 log.warning("tap delete failed", tap=tap, error=str(e))
 
         # Wipe jail directory
-        jail_dir = meta.get("jail_dir")
-        if jail_dir and os.path.exists(jail_dir):
+        if jail_dir.exists():
             shutil.rmtree(jail_dir, ignore_errors=True)
 
         log.info("firecracker instance destroyed", instance_id=instance_id)
@@ -223,3 +225,10 @@ async def _start_jailer(instance_id: str, config_path: Path, jail_dir: Path) -> 
     )
     log.info("jailer started", pid=proc.pid, instance_id=instance_id)
     return proc.pid
+
+
+def _read_pid(pid_file: Path) -> Optional[int]:
+    try:
+        return int(pid_file.read_text().strip())
+    except (FileNotFoundError, ValueError):
+        return None

@@ -2,234 +2,150 @@
 
 ## Executive Summary
 
-IsolateX is a configurable challenge isolation platform that supports multiple runtimes.
-Organizations choose based on their threat model, cost, and operational capacity.
+The IsolateX spectrum is ordered like this:
 
-This document outlines the design philosophy and why each runtime exists.
+1. `docker`
+2. `kctf`
+3. `kata+kCTF`
+4. `kata+FC`
+5. `FC`
+
+In code, the actual runtime strings remain:
+
+- `docker`
+- `kctf`
+- `kata`
+- `firecracker`
+
+The `kata+kCTF` and `kata+FC` steps are documented isolation tiers layered on top of those runtime values.
 
 ---
 
 ## The Spectrum
 
-IsolateX supports a complete spectrum from weak to strongest isolation:
+Choose the isolation tier that matches the workload risk:
 
+```text
+docker
+  -> weakest isolation, fastest iteration, lowest cost
+
+kctf
+  -> stronger Kubernetes-based isolation with hardened pod settings
+
+kata+kctf
+  -> guest-kernel Kubernetes path for stronger isolation
+
+kata+fc
+  -> VM-backed step between Kata-on-Kubernetes and direct Firecracker
+
+fc
+  -> direct KVM microVMs for highest-risk workloads
 ```
-Docker
-  ↓ (weak, fast, cheap)
-kCTF (standard Kubernetes)
-  ↓ (medium isolation, operational ease)
-Kata + kCTF (kCTF + guest kernel)
-  ↓ (strong isolation, still Kubernetes-native)
-Kata + Firecracker (kCTF routing to Firecracker microVMs)
-  ↓ (very strong, Kubernetes-orchestrated microVMs)
-Raw Firecracker (direct KVM, full control)
-  ↑ (strongest, maximum flexibility)
-```
 
 ---
 
-## Why this spectrum?
+## Why This Spectrum Exists
 
-### Different threat models demand different solutions
+### Different threat models demand different runtimes
 
-**Low-risk (static web, crypto, rev):** Docker or kCTF is fine. Player can't break anything critical.
+- Low-risk workloads like static web or basic crypto usually fit `docker` or `kctf`.
+- Medium-risk workloads that may expose RCE benefit from `kata+kCTF`.
+- Higher-risk workloads can move up to `kata+FC`.
+- Highest-risk workloads like pwn, AI code execution, or sandbox escape research belong on `FC`.
 
-**Medium-risk (web exploitation, simple RCE):** Kata + kCTF gives stronger isolation while keeping Kubernetes's operational benefits.
+### Cost still matters
 
-**High-risk (pwn, AI code execution, sandbox escapes):** Dedicated Firecracker microVMs. Player gets their own kernel. Escape stays in the VM.
+The stronger the isolation boundary, the more host overhead you usually pay:
 
-### Cost-efficiency
+- `docker` is cheapest and densest
+- `kctf` adds Kubernetes overhead
+- `kata+kCTF` adds guest-kernel overhead
+- `kata+FC` adds stronger VM-backed overhead
+- `FC` trades density for strongest isolation
 
-- Docker: $0.01 per instance
-- kCTF: $0.05 per instance (Kubernetes overhead)
-- Kata + kCTF: $0.08 per instance (guest kernel overhead)
-- Kata + Firecracker: $0.12 per instance (Kubernetes routing to microVM)
-- Raw Firecracker: $0.20 per instance (direct control, max flexibility)
+### Operations still matter
 
-For an event with ~200 concurrent instances, that's:
-- All Docker: $2/hour
-- All Kata + kCTF: $9.60/hour
-- Hybrid (Kata+kCTF + Firecracker): $12-15/hour
-
-### Operational simplicity
-
-- Docker: trivial
-- kCTF: simple (one kubectl)
-- Kata + kCTF: simple (add one RuntimeClass)
-- Kata + Firecracker: moderate (Kubernetes routing to microVMs)
-- Raw Firecracker: complex (direct orchestration)
+- `docker` is easiest to stand up for local dev
+- `kctf` and `kata+kCTF` fit teams already operating Kubernetes
+- `kata+FC` and `FC` require KVM-capable hosts and more host prep
 
 ---
 
-## CSAW Configuration
+## Recommended CSAW Model
 
-CSAW uses a **two-tier approach:**
+### Tier 1: Easy/Medium
 
-### Tier 1: Easy/Medium (Kata + kCTF)
+- Tier: `kata+kCTF`
+- Code mapping: `kata`
+- Good for: web, crypto, reversing, easier misc challenges
+- Why: strong isolation without paying microVM-per-team cost on every challenge
 
-**Challenges:** web, crypto, reversing, easy misc
+### Tier 2: Hard
 
-**Why:**
-- Cost-efficient (pack many pods in one cluster)
-- Strong isolation (guest kernel blocks kernel exploits)
-- Operational ease (standard kCTF lifecycle)
+- Tier: `kata+FC` / `FC`
+- Code mapping: `firecracker`
+- Good for: pwn, RCE, AI/code execution, anything with hostile shell access
+- Why: dedicated microVM isolation and tighter blast-radius control
 
-**Isolation level:** ⭐⭐⭐⭐ (very strong for 4-hour event)
-
-**Justification:**
-- CSAW is time-limited (4-8 hours)
-- Players are students, not state actors
-- Kernel 0-day in 4 hours is unlikely
-- Cost savings are real
-
-### Tier 2: Hard (Firecracker)
-
-**Challenges:** pwn, RCE, AI code execution, hardcore reversing
-
-**Why:**
-- Dedicated microVM per team (no resource contention)
-- Kernel isolation (different kernel per instance)
-- Maximum blast radius control
-
-**Isolation level:** ⭐⭐⭐⭐⭐ (strongest)
-
-**Justification:**
-- Shell access in pwn requires maximum isolation
-- Code execution workloads (AI/LLM) need their own kernel
-- Firecracker's fast startup (125ms) handles scale
-- Worth the cost for high-risk challenges
+This model keeps the runtime strings simple while still reflecting the real deployment shape.
 
 ---
 
-## IsolateX for others
+## When To Use Each Runtime
 
-Organizations using IsolateX have full flexibility:
-
-- **University CTF (like CSAW):** Kata + kCTF + Firecracker (our model)
-- **Beginner CTF:** Docker only
-- **Enterprise red team lab:** All Firecracker
-- **Security research platform:** Firecracker + custom networking
-- **Serverless sandbox:** All Docker or Kata + kCTF
-
-The platform doesn't dictate. It supports all of the above.
+| Situation | Recommended tier | Why |
+|---|---|---|
+| Local dev, static web, fast iteration | `docker` | Fastest setup and lowest overhead |
+| Standard Kubernetes-backed challenge isolation | `kctf` | Better operational fit for cluster-based events |
+| Medium-risk challenge on Kubernetes | `kata+kCTF` | Guest kernel adds meaningful isolation margin |
+| Harder VM-backed challenge tier | `kata+FC` | Stronger VM-backed step before going fully direct |
+| High-risk hostile code execution | `FC` | Strongest path in this repo |
 
 ---
 
-## Architecture decisions
+## Security Principles
 
-### Why Kata + kCTF instead of just kCTF?
+1. Isolation first.
+   Choose the runtime based on breakout risk, not convenience alone.
 
-**Plain kCTF (medium isolation):**
-- Shared kernel across all pods
-- Kernel exploit could theoretically jump between pods (though NetworkPolicy helps)
-- Good enough for most CTFs
+2. Defense in depth.
+   Runtime isolation, network policy, dropped capabilities, seccomp, TTL cleanup, and per-team flags all matter together.
 
-**Kata + kCTF (strong isolation):**
-- Each kCTF pod gets guest kernel (Firecracker or QEMU underneath)
-- Kernel exploit trapped in guest; can't reach host or other pods
-- Still benefits from kCTF orchestration
-- Small cost overhead (guest kernel + VM startup)
+3. No shared mutable state.
+   One team gets one isolated environment, and teardown should remove it completely.
 
-**For CSAW:** Kata + kCTF is worth it because:
-1. Adds real security margin
-2. Keeps kCTF simplicity
-3. Cost per instance is still very low
-4. Easy to implement (one RuntimeClass definition)
-
-### Why Firecracker for hard challenges?
-
-**Firecracker (direct KVM microVMs):**
-- Orchestrator picks a Firecracker worker
-- Worker launches microVM directly
-- Orchestrator routes traffic to it
-- Per-team dedicated kernel and resources
-- Fastest startup (125ms) and highest density
-
-**For hard CSAW challenges:** Firecracker is the right call because:
-1. Shell access requires maximum isolation
-2. Dedicated kernel per team blocks kernel exploits
-3. Fast startup and high density handle scale
-4. Cost-justified for high-risk workloads
-
-### Why not Firecracker for everything?
-
-Because:
-- 4-5x higher cost than kCTF
-- Most challenges don't need it
-- CSAW is 4 hours, not 24/7 public platform
-- kCTF with Kata provides 95% of isolation at 1/4 the cost
+4. Operational clarity matters.
+   Runtime names in challenge config should match the actual adapter names in code, even when the strategy docs talk about `kata+kCTF` and `kata+FC`.
 
 ---
 
-## Security principles
+## Future Extensibility
 
-1. **Isolation is the goal, not the technology**
-   - Docker, kCTF, Kata, Firecracker are all tools
-   - Each has a threat model it's designed for
-   - Use the right tool for the right risk level
+Adding a new runtime still follows the same shape:
 
-2. **Defense in depth**
-   - NetworkPolicy (no pod-to-pod even on kCTF)
-   - seccomp (block dangerous syscalls)
-   - Capability drop (remove privileges)
-   - Resource limits (prevent DoS)
-   - TTL (no stale instances)
-   - One layer failing doesn't mean game over
-
-3. **No shared mutable state**
-   - Each instance is ephemeral
-   - One team can't read another's files
-   - Flags are per-team derived (not shared)
-   - No inter-instance communication
-
-4. **Fail secure**
-   - If orchestrator crashes, instances degrade gracefully
-   - If a worker fails, instances route to healthy workers
-   - If TTL reaper fails, orchestrator handles cleanup
-
----
-
-## Future extensibility
-
-Adding a new runtime takes:
-1. One file implementing `RuntimeAdapter`
-2. Adding it to the registry
-3. Updating the runtime type enum
-4. Done
+1. Implement a new adapter in `worker/adapters/`
+2. Register it in `worker/adapters/__init__.py`
+3. Add it to `RuntimeType` in `orchestrator/db/models.py`
+4. Document the host setup and tradeoffs
 
 Examples:
-- gVisor (another sandbox option)
-- Kata + Cloud Hypervisor (different VM engine)
-- QEMU (full VMs if needed)
-- Podman (Docker alternative)
-- Incus / LXD containers
 
-The orchestrator doesn't care. It just dispatches to the right adapter.
+- gVisor
+- QEMU-backed VMs
+- Podman
+- Incus / LXD
 
 ---
 
-## Portfolio value
+## Decision Matrix
 
-This design shows:
-- ✓ Architectural thinking (not just "pick one tech")
-- ✓ Risk stratification (different challenges, different protections)
-- ✓ Cost consciousness (balance security and efficiency)
-- ✓ Extensibility (support many runtimes via clean interfaces)
-- ✓ Real-world constraints (time-limited event, student competitors)
-
-That's much stronger than "we built a CTF isolation platform."
-
----
-
-## Decision matrix: which runtime for which challenge?
-
-| Challenge | Easy level | Medium level | Hard level |
+| Challenge type | Lower risk | Medium risk | High risk |
 |---|---|---|---|
-| Web | Docker | Kata+kCTF | Firecracker |
-| Crypto | Docker | kCTF | — |
-| Reversing | Docker | kCTF | Kata+kCTF or Firecracker |
-| Pwn | — | — | Firecracker |
-| Misc/misc. | Docker | kCTF or Kata+kCTF | Firecracker if code exec |
-| AI/code exec | — | Kata+kCTF | Firecracker |
+| Web | `docker` | `kata+kCTF` | `FC` |
+| Crypto | `docker` | `kctf` or `kata+kCTF` | `FC` if code exec is involved |
+| Reversing | `docker` | `kctf` or `kata+kCTF` | `kata+FC` or `FC` |
+| Pwn | — | `kata+FC` | `FC` |
+| Misc | `docker` | `kctf` or `kata+kCTF` | `FC` if execution is exposed |
+| AI / code execution | — | `kata+FC` | `FC` |
 
-**For CSAW:** use Tier 1 (Kata+kCTF) unless it's explicitly a pwn or RCE challenge.
+For CSAW-style events, default to `kata+kCTF` for most challenges and reserve `kata+FC` / `FC` for the genuinely dangerous ones.

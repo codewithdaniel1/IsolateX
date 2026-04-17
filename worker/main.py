@@ -6,6 +6,12 @@ orchestrator and dispatches to the configured runtime adapter.
 
 One worker process = one runtime type.
 Run multiple workers on the same host if you want multiple runtimes there.
+
+Conceptual platform ladder in docs:
+docker -> kCTF -> kata+kCTF -> kata+FC -> FC
+
+Actual worker runtime values in code:
+docker | kctf | kata | firecracker
 """
 import asyncio
 import httpx
@@ -127,5 +133,8 @@ async def _heartbeat_loop():
 
 
 def _self_address() -> str:
+    if settings.advertise_address:
+        return settings.advertise_address
+
     import socket
     return socket.gethostbyname(socket.gethostname())

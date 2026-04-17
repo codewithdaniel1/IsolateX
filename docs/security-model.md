@@ -17,7 +17,7 @@ environment cannot do any of the above.
 
 ## Isolation boundaries
 
-### Firecracker / Cloud Hypervisor (microVMs)
+### Firecracker (microVMs)
 - **Compute**: KVM hardware virtualization. Guest has its own kernel.
   A kernel exploit in the guest does not automatically compromise the host.
 - **Network**: each microVM gets its own tap device. ebtables rules on the bridge

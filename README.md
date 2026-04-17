@@ -15,7 +15,7 @@ IsolateX is a production-ready infrastructure system that automatically spins up
 
 ## Key Features
 
-- **Multi-runtime support** — Docker, Kubernetes, Kata, Firecracker. Mix and match based on security needs.
+- **Multi-runtime spectrum** — Docker, kCTF, Kata + kCTF, Kata + FC, and FC. Mix and match based on security needs.
 - **Risk stratification** — Use cheap containers for safe challenges, dedicated microVMs for high-risk ones.
 - **Automatic cleanup** — Instances auto-expire via TTL. No stale resources.
 - **Per-team isolation** — Team A cannot access team B's environment, even with shell access.
@@ -26,16 +26,17 @@ IsolateX is a production-ready infrastructure system that automatically spins up
 
 ## Runtime Spectrum
 
-IsolateX supports multiple isolation strategies. Choose based on your threat model, cost, and operational capacity:
+IsolateX uses this platform spectrum, in this order:
 
-| Runtime | Type | Best for | Isolation | Cost |
+| Spectrum step | Code mapping | Best for | Isolation | Cost |
 |---|---|---|---|---|
-| **Docker** | container | static web, beginner | ⭐⭐ | $ |
-| **kCTF** | Kubernetes pod + nsjail | most challenges | ⭐⭐⭐ | $$ |
-| **Kata + kCTF** | kCTF pods + guest kernel | medium-risk challenges | ⭐⭐⭐⭐ | $$$ |
-| **Firecracker** | Kubernetes routing + microVM | hard challenges (pwn, RCE, AI) | ⭐⭐⭐⭐⭐ | $$$$ |
-| **Raw Firecracker** | microVM (KVM, direct) | extreme isolation, full control | ⭐⭐⭐⭐⭐ | $$$$$ |
+| **Docker** | `docker` | static web, beginner | ⭐⭐ | $ |
+| **kCTF** | `kctf` | standard Kubernetes isolation | ⭐⭐⭐ | $$ |
+| **Kata + kCTF** | `kata` on kCTF/Kubernetes | medium-risk challenges | ⭐⭐⭐⭐ | $$$ |
+| **Kata + FC** | strategy layer between `kata` and direct Firecracker | harder challenges needing stronger VM-backed isolation | ⭐⭐⭐⭐+ | $$$$ |
+| **FC** | `firecracker` | pwn, RCE, AI, max-risk workloads | ⭐⭐⭐⭐⭐ | $$$$$ |
 
+The actual runtime strings in challenge config remain `docker`, `kctf`, `kata`, and `firecracker`. The `kata+kCTF` and `kata+FC` entries are part of the documented isolation ladder.
 Adding a new runtime takes one file. See [docs/adding-a-runtime.md](docs/adding-a-runtime.md).
 
 ## Supported gateways
@@ -50,11 +51,11 @@ Players → Gateway (Traefik/Nginx, TLS)
                                  → CTFd
                                  → IsolateX Orchestrator
                                  ↓ (policy-driven routing)
-        ┌──────────┬──────────┬───────────────┬─────────────┐
-        ↓          ↓          ↓               ↓             ↓
-      Docker      kCTF   Kata+kCTF     Kata+Firecracker    Raw FC
-   container      pod    (guest kernel) (kCTF→microVM)    (direct)
-(weak isolation) (medium)  (strong)      (very strong)    (strongest)
+        ┌──────────┬──────────┬─────────────┬───────────┐
+        ↓          ↓          ↓             ↓           ↓
+      Docker      kCTF    Kata+kCTF     Kata+FC        FC
+   container      pod     guest VM     VM-backed      microVM
+(weak isolation) (medium) (strong)   (very strong)  (strongest)
 ```
 
 Full diagram: [docs/architecture.md](docs/architecture.md)
@@ -87,7 +88,7 @@ Orchestrator API: http://localhost:8080/docs
 - [docs/architecture.md](docs/architecture.md) — Full architecture + ASCII diagram + request flow
 
 **Event deployment:**
-- [docs/csaw-deployment.md](docs/csaw-deployment.md) — **CSAW 2026 deployment guide** (Kata + kCTF + Firecracker)
+- [docs/csaw-deployment.md](docs/csaw-deployment.md) — **CSAW 2026 deployment guide** (Docker → kCTF → Kata + kCTF → Kata + FC → FC model)
 
 **Setup guides:**
 - [docs/kctf-setup.md](docs/kctf-setup.md) — Fresh kCTF / Kubernetes cluster setup
@@ -132,9 +133,8 @@ worker/                    Worker agent (runs on each compute host)
   │   ├── base.py         RuntimeAdapter interface (extend this for new runtimes)
   │   ├── docker.py       Hardened container isolation
   │   ├── kctf.py         Kubernetes pod + nsjail
-  │   ├── kata.py         Kubernetes + Kata (guest kernel isolation)
-  │   ├── firecracker.py  Firecracker microVM (KVM-based)
-  │   └── cloud_hypervisor.py  Cloud Hypervisor alternative
+  │   ├── kata.py         Kubernetes + Kata (Kata + kCTF tier)
+  │   └── firecracker.py  Firecracker microVM (FC / Kata + FC tier)
   └── networking/         Tap device helpers for microVMs
 
 ctfd-plugin/               CTFd integration
@@ -150,7 +150,7 @@ infra/                     Infrastructure automation
   ├── firecracker/        Challenge image builders
   └── scripts/            Hardware checks
 
-docs/                      Documentation (11 files)
+docs/                      Documentation
   ├── STRATEGY.md         Architecture philosophy
   ├── architecture.md     Full system design
   ├── csaw-deployment.md  CSAW-specific deployment
@@ -177,16 +177,18 @@ IsolateX ships with example configurations:
 A two-tier approach balancing cost and security:
 
 - **Easy/Medium challenges** (web, crypto, reversing)
-  - Runtime: Kata + kCTF
+  - Runtime tier: Kata + kCTF
+  - Code mapping: `kata`
   - Isolation: ⭐⭐⭐⭐ (strong)
   - Cost: $$ (good density)
   - Why: Most challenges don't need extreme isolation. Guest kernel + kCTF network policies provide strong defense.
 
 - **Hard challenges** (pwn, RCE, AI/code execution)
-  - Runtime: Firecracker (dedicated microVMs)
+  - Runtime tier: Kata + FC / FC
+  - Code mapping: `firecracker`
   - Isolation: ⭐⭐⭐⭐⭐ (strongest)
   - Cost: $$$$ (per-team microVMs)
-  - Why: Shell access / code execution demand kernel-level isolation. Firecracker guarantees players can't reach the host or other teams.
+  - Why: Shell access / code execution demand VM-level isolation. Firecracker guarantees players can't reach the host or other teams.
 
 See [docs/csaw-deployment.md](docs/csaw-deployment.md) for step-by-step deployment guide.
 

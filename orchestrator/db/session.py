@@ -1,4 +1,5 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import text
 from .models import Base
 from orchestrator.config import settings
 
@@ -19,6 +20,9 @@ AsyncSessionLocal = async_sessionmaker(
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text("ALTER TABLE instances ADD COLUMN IF NOT EXISTS backend_port INTEGER")
+        )
 
 
 async def get_db():

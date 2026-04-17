@@ -100,14 +100,13 @@ spec:
 
 ## IsolateX integration
 
-When you register a challenge with Kata + kCTF, the orchestrator should set:
+When you register a challenge for the Kata + kCTF tier, the orchestrator should set:
 
 ```json
 {
   "id": "web300",
   "name": "Web 300",
-  "runtime": "kctf",
-  "runtime_class": "kata",
+  "runtime": "kata",
   "image": "ghcr.io/osiris/web300:latest",
   "port": 8080
 }
@@ -129,11 +128,11 @@ The worker agent creates a pod with `runtimeClassName: kata` automatically.
 
 ---
 
-## Kata + Firecracker vs Kata + QEMU
+## Kata + FC vs Kata + QEMU
 
 Kata can use multiple hypervisors:
 
-**Kata + Firecracker**
+**Kata + FC**
 - Fastest startup
 - Smallest memory footprint
 - Minimal device model
@@ -144,7 +143,7 @@ Kata can use multiple hypervisors:
 - More device support
 - Better compatibility with complex workloads
 
-For CSAW, use Kata + Firecracker (default).
+For CSAW, use the Kata + FC path when you need the stronger VM-backed step above Kata + kCTF.
 
 ---
 

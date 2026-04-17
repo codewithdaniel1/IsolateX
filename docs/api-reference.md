@@ -100,6 +100,8 @@ Deregister a worker.
 ### POST /challenges
 Register a challenge.
 
+Valid `runtime` values are `docker`, `kctf`, `kata`, and `firecracker`.
+
 **Request**
 ```json
 {
@@ -115,7 +117,7 @@ Register a challenge.
 }
 ```
 
-For Firecracker/Cloud Hypervisor, use `kernel_image` and `rootfs_image` instead of `image`.
+For Firecracker, use `kernel_image` and `rootfs_image` instead of `image`.
 
 ---
 

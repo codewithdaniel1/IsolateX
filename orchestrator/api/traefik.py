@@ -9,6 +9,7 @@ Nginx operators: see gateway/nginx/ for the sidecar reload approach instead.
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import structlog
 
 from orchestrator.db.session import get_db
 from orchestrator.db.models import Instance, InstanceStatus, Worker
@@ -16,6 +17,7 @@ from orchestrator.core.router import instance_subdomain
 from orchestrator.config import settings
 
 router = APIRouter(prefix="/traefik", tags=["gateway"])
+log = structlog.get_logger()
 
 
 @router.get("/config")
@@ -31,6 +33,10 @@ async def traefik_config(db: AsyncSession = Depends(get_db)):
     services = {}
 
     for inst, worker in rows:
+        if inst.backend_port is None:
+            log.warning("skipping route without backend port", instance_id=str(inst.id))
+            continue
+
         subdomain = instance_subdomain(str(inst.id), inst.challenge_id)
         key = str(inst.id).replace("-", "")[:12]
 
@@ -42,7 +48,7 @@ async def traefik_config(db: AsyncSession = Depends(get_db)):
         }
         services[key] = {
             "loadBalancer": {
-                "servers": [{"url": f"http://{worker.address}:{inst.id.int % 10000 + 30000}"}]
+                "servers": [{"url": f"http://{worker.address}:{inst.backend_port}"}]
             }
         }
 

@@ -154,15 +154,18 @@ uvicorn worker.main:app --host 0.0.0.0 --port 9090
 
 ## Choosing a runtime per challenge
 
-| Challenge type | Recommended runtime | Why |
+| Challenge type | Recommended spectrum tier | Code mapping |
 |---|---|---|
-| Static web / beginner | Docker | Lightweight, fast, easy to build |
-| Web exploitation | kCTF | Container-level + nsjail isolation sufficient |
-| Medium-risk web / crypto | Kata + kCTF | Guest kernel isolation, cost-efficient |
-| Pwn / binary / RCE | Kata + Firecracker | KVM isolation; shell access can't escape |
-| Malware / sandbox escape | Raw Firecracker | Strongest isolation, full control |
-| Network challenges | kCTF or Kata + kCTF | Kubernetes networking is flexible |
-| AI / code execution | Kata + Firecracker | Code execution needs kernel-level isolation |
+| Static web / beginner | Docker | `docker` |
+| Web exploitation | kCTF | `kctf` |
+| Medium-risk web / crypto | Kata + kCTF | `kata` |
+| Pwn / binary / RCE | Kata + FC / FC | `firecracker` |
+| Malware / sandbox escape | FC | `firecracker` |
+| Network challenges | kCTF or Kata + kCTF | `kctf` or `kata` |
+| AI / code execution | Kata + FC / FC | `firecracker` |
+
+The platform spectrum is `docker -> kCTF -> kata+kCTF -> kata+FC -> FC`.
+The actual runtime strings in challenge config remain `docker`, `kctf`, `kata`, and `firecracker`.
 
 ---
 

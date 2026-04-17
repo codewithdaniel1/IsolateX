@@ -23,8 +23,8 @@ CTFd scoreboard
 IsolateX plugin
   ↓ (REST API call)
 Orchestrator (FastAPI)
-  ├─ kCTF pod (easy/medium) → Kata Containers
-  └─ Firecracker (hard) → Dedicated microVM
+  ├─ kata+kCTF tier (easy/medium)
+  └─ kata+FC / FC tier (hard)
 ```
 
 ---
@@ -36,7 +36,7 @@ Orchestrator (FastAPI)
 | Tier | Runtime | Challenges | Isolation |
 |---|---|---|---|
 | Easy/Medium | Kata + kCTF | web, crypto, rev | ⭐⭐⭐⭐ |
-| Hard | Kata + Firecracker | pwn, RCE, AI | ⭐⭐⭐⭐⭐ |
+| Hard | Kata + FC / FC | pwn, RCE, AI | ⭐⭐⭐⭐⭐ |
 
 See `docs/csaw-deployment.md` for the full playbook.
 

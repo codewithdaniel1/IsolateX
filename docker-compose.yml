@@ -101,7 +101,9 @@ services:
       ORCHESTRATOR_URL: http://orchestrator:8080
       ORCHESTRATOR_API_KEY: dev-api-key-change-in-prod
       WORKER_ID: worker-docker-01
+      WORKER_ADVERTISE_ADDRESS: host.docker.internal
       DOCKER_NETWORK: isolatex_challenges
+      DOCKER_BIND_HOST: 0.0.0.0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:

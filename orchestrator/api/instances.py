@@ -150,6 +150,7 @@ async def _launch_on_worker(inst: Instance, challenge: Challenge, worker: Worker
                 result = await db.execute(select(Instance).where(Instance.id == inst.id))
                 record = result.scalar_one()
                 record.status = InstanceStatus.running
+                record.backend_port = data["port"]
                 record.endpoint = f"https://{endpoint}" if settings.tls_enabled else f"http://{endpoint}"
                 await db.commit()
             log.info("instance running", instance_id=str(inst.id), endpoint=endpoint)

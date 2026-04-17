@@ -1,5 +1,5 @@
 """
-Tap device management for microVM networking (Firecracker, Cloud Hypervisor).
+Tap device management for microVM networking (Firecracker).
 Each microVM gets its own tap device attached to a shared bridge.
 Traffic between tap devices on the same bridge is blocked by ebtables rules
 set up during host preparation (see docs/firecracker-host-setup.md).

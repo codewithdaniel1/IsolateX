@@ -11,6 +11,8 @@ For kCTF use:
 Since Kata is managed by Kubernetes (just a runtime choice), this adapter
 is essentially a wrapper around the Kubernetes API with Kata-specific config.
 
+In the documented ladder, this adapter maps to the `kata+kCTF` tier.
+
 See docs/kata-setup.md for setup and docs/kctf-setup.md for cluster prep.
 """
 import asyncio
@@ -61,9 +63,7 @@ class KataAdapter(RuntimeAdapter):
 
     async def destroy(self, instance_id: str) -> None:
         meta = self._instances.pop(instance_id, None)
-        if not meta:
-            return
-        name = meta["pod_name"]
+        name = meta["pod_name"] if meta else f"isolatex-{instance_id[:16]}"
         await asyncio.to_thread(self._delete_pod, name)
         await asyncio.to_thread(self._delete_service, name)
         log.info("kata instance destroyed", instance_id=instance_id, pod=name)
