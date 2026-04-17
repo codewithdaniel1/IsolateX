@@ -14,17 +14,9 @@ class WorkerSettings(BaseSettings):
     # Which runtime this worker handles
     # Each worker process handles exactly ONE runtime type.
     # Run separate worker processes for separate runtimes.
-    # Platform ladder in docs: docker -> kCTF -> kata+kCTF -> kata+FC -> FC
-    # Actual runtime strings here: docker | kctf | kata | firecracker
+    # Isolation spectrum in docs: docker -> kCTF -> kata -> kata-firecracker
+    # Actual runtime strings here: docker | kctf | kata | kata-firecracker
     runtime: str = "docker"
-
-    # Firecracker
-    firecracker_bin: str = "/usr/local/bin/firecracker"
-    jailer_bin: str = "/usr/local/bin/jailer"
-    firecracker_run_dir: str = "/run/isolatex/firecracker"
-    firecracker_uid: int = 10000
-    firecracker_gid: int = 10000
-    tap_bridge: str = "isolatex0"
 
     # kCTF / Kubernetes
     kubeconfig: str = ""

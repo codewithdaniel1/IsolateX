@@ -20,7 +20,7 @@ SUPPORTS_KCTF=true
 SUPPORTS_DOCKER=true
 
 # ── KVM ──────────────────────────────────────────────────────────────────────
-echo "▸ KVM / microVM support"
+echo "▸ KVM / Kata microVM support"
 if [[ -c /dev/kvm ]]; then
     ok "/dev/kvm exists"
     if [[ -r /dev/kvm && -w /dev/kvm ]]; then
@@ -60,17 +60,17 @@ fi
 if command -v jailer &>/dev/null; then
     ok "jailer found"
 else
-    warn "jailer binary not found — required for Firecracker privilege separation"
+    warn "jailer binary not found — required when using Firecracker as the Kata backend"
     SUPPORTS_MICROVM=false
 fi
 
 # ── Networking ────────────────────────────────────────────────────────────────
 echo ""
-echo "▸ Networking (microVM tap support)"
+echo "▸ Networking (Firecracker backend support)"
 if command -v ip &>/dev/null; then
     ok "iproute2 (ip) found"
 else
-    fail "iproute2 not found — required for tap device management"
+    fail "iproute2 not found — required for Firecracker-backed networking"
     info "Install: apt install iproute2 / dnf install iproute"
     SUPPORTS_MICROVM=false
 fi
@@ -78,7 +78,7 @@ fi
 if ip link show isolatex0 &>/dev/null; then
     ok "bridge isolatex0 exists"
 else
-    warn "bridge isolatex0 not found — create it before starting Firecracker workers"
+    warn "bridge isolatex0 not found — create it before using a Firecracker-backed Kata runtime"
     info "Fix: ip link add isolatex0 type bridge && ip link set isolatex0 up"
 fi
 
@@ -126,9 +126,9 @@ KERNEL=$(uname -r)
 KERNEL_MAJOR=$(uname -r | cut -d. -f1)
 KERNEL_MINOR=$(uname -r | cut -d. -f2)
 if [[ $KERNEL_MAJOR -gt 5 || ($KERNEL_MAJOR -eq 5 && $KERNEL_MINOR -ge 10) ]]; then
-    ok "Kernel $KERNEL (>= 5.10, good for Firecracker)"
+    ok "Kernel $KERNEL (>= 5.10, good for Kata with Firecracker backend)"
 else
-    warn "Kernel $KERNEL — Firecracker recommends >= 5.10"
+    warn "Kernel $KERNEL — Firecracker-backed Kata works best on >= 5.10"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
@@ -136,7 +136,7 @@ echo ""
 echo "══════════════════════════════════════════"
 echo "  Summary"
 echo "══════════════════════════════════════════"
-[[ $SUPPORTS_MICROVM == true ]] && ok "Firecracker (Kata+FC / FC): SUPPORTED" || fail "Firecracker (Kata+FC / FC): NOT supported on this host"
+[[ $SUPPORTS_MICROVM == true ]] && ok "kata-firecracker backend: SUPPORTED" || fail "kata-firecracker backend: NOT supported on this host"
 [[ $SUPPORTS_KCTF == true ]]    && ok "kCTF (Kubernetes): kubectl present"        || warn "kCTF: kubectl not found"
 [[ $SUPPORTS_DOCKER == true ]]  && ok "Docker: SUPPORTED"                          || fail "Docker: NOT supported or daemon down"
 echo ""

@@ -6,8 +6,8 @@ version: "3.9"
 # Start everything:
 #   docker compose up -d
 #
-# Firecracker workers are NOT in this compose — they require a bare-metal host.
-# See docs/firecracker-host-setup.md
+# Kata-backed Kubernetes workers are NOT in this compose.
+# See docs/setup.md and docs/kata-setup.md
 #
 # CTFd: http://localhost:8000
 # Orchestrator API: http://localhost:8080

@@ -17,15 +17,15 @@ environment cannot do any of the above.
 
 ## Isolation boundaries
 
-### Firecracker (microVMs)
-- **Compute**: KVM hardware virtualization. Guest has its own kernel.
-  A kernel exploit in the guest does not automatically compromise the host.
-- **Network**: each microVM gets its own tap device. ebtables rules on the bridge
-  drop all inter-instance traffic. The guest cannot reach the host agent port.
-- **Storage**: each instance gets a copy-on-write rootfs overlay. Destroying the
-  instance wipes the overlay. The base image is read-only.
-- **Process**: Firecracker runs under the jailer (chroot + UID/GID drop + seccomp).
-  The API socket is inside the jail.
+### Kata / Kata-Firecracker
+- **Compute**: each pod runs inside a lightweight VM with its own guest kernel.
+  A kernel exploit inside the guest does not automatically compromise the host.
+- **Network**: Kubernetes networking still applies. NetworkPolicy can deny pod-to-pod
+  traffic and only allow ingress from the gateway.
+- **Storage**: challenge state stays inside the pod's ephemeral filesystem unless you
+  explicitly mount additional volumes.
+- **Process**: the challenge still runs as an ordinary container process inside the
+  Kata guest, with Kubernetes securityContext controls applied on top.
 
 ### kCTF / Kubernetes
 - **Compute**: one pod per team instance. Linux namespaces isolate PID, network, mount.
@@ -43,7 +43,7 @@ environment cannot do any of the above.
 - **Process**: `--cap-drop ALL`, `--no-new-privileges`, `--read-only`,
   `--security-opt no-new-privileges`.
 - **Recommendation**: use Docker only for static web or easy challenges.
-  For anything with shell access, use Firecracker or kCTF.
+  For anything with shell access, use kCTF, Kata, or Kata-Firecracker.
 
 ---
 
@@ -104,7 +104,7 @@ Properties:
 ### Orchestrator
 - [ ] API key required on all endpoints
 - [ ] No direct exposure to players (behind gateway IP allowlist)
-- [ ] TTL reaper runs on all worker nodes
+- [ ] TTL reaper runs in the orchestrator
 
 ### Secrets
 - [ ] FLAG_HMAC_SECRET never exposed to players
@@ -127,7 +127,7 @@ If a player is suspected of breaking out of their instance:
 
 1. Run `DELETE /instances/<id>` to immediately destroy the instance.
 2. Review worker logs for unusual syscalls or network activity.
-3. For Firecracker: the jailer's chroot limits blast radius to the jail directory.
+3. For Kata / Kata-Firecracker: inspect the pod, node runtime logs, and the selected RuntimeClass.
 4. For Docker: check for container escape via `docker inspect` and host process list.
 5. For kCTF: `kubectl describe pod <name>` and review audit logs.
 6. Rotate `FLAG_HMAC_SECRET` and `API_KEY` if the control plane may have been reached.

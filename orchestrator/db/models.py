@@ -26,7 +26,7 @@ class RuntimeType(str, enum.Enum):
     #
     # docker          standard container, weakest isolation
     # kctf            Kubernetes pod + nsjail
-    # kata            kCTF + Kata Containers (default hypervisor: QEMU/Cloud Hypervisor)
+    # kata            kCTF + Kata Containers (default hypervisor: QEMU)
     # kata_firecracker kCTF + Kata Containers (Firecracker as Kata hypervisor backend)
     docker           = "docker"
     kctf             = "kctf"

@@ -29,10 +29,10 @@ IsolateX is a thin connector between CTFd and Kubernetes. It does not replace Ku
                        │
           ┌────────────┼────────────┐
           ▼            ▼            ▼
-    ┌──────────┐ ┌──────────┐ ┌──────────────────┐
-    │  Docker  │ │   kCTF   │ │  Kata / Kata+FC  │
-    │  worker  │ │  worker  │ │     worker       │
-    └──────────┘ └──────────┘ └──────────────────┘
+    ┌──────────┐ ┌──────────┐ ┌──────────────────────────┐
+    │  Docker  │ │   kCTF   │ │  Kata / kata-firecracker │
+    │  worker  │ │  worker  │ │          worker          │
+    └──────────┘ └──────────┘ └──────────────────────────┘
           │            │                │
           ▼            ▼                ▼
     Container     K8s pod +       K8s pod +
@@ -48,7 +48,7 @@ All four runtimes are Kubernetes-native. Workers are FastAPI agents that receive
 ```
 docker          → containerd → runc → container
 kctf            → containerd → runc → container + nsjail
-kata            → containerd → Kata runtime → QEMU/CHV → guest VM → container
+kata            → containerd → Kata runtime → QEMU → guest VM → container
 kata-firecracker → containerd → Kata runtime → Firecracker → guest VM → container
 ```
 
@@ -84,7 +84,7 @@ TTL reaper (every 30s) → finds instances where expires_at ≤ now
    c. Picks least-loaded worker for that runtime
    d. Creates Instance record (status=pending, expires_at set)
    e. Fires background task → POST worker/launch
-5. Worker launches pod (Docker / kCTF / Kata)
+5. Worker launches pod (Docker / kCTF / Kata RuntimeClass)
 6. Worker returns {port}
 7. Orchestrator registers route with Traefik
 8. Orchestrator updates Instance: status=running, endpoint=https://...

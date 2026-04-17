@@ -4,7 +4,7 @@ Kata Containers adapter (via Kubernetes RuntimeClass).
 Handles both kata and kata-firecracker runtimes. The only difference between
 them is which Kubernetes RuntimeClass is selected:
 
-  runtime="kata"             → RuntimeClass "kata"  (default hypervisor: QEMU / Cloud Hypervisor)
+  runtime="kata"             → RuntimeClass "kata"  (default hypervisor: QEMU)
   runtime="kata-firecracker" → RuntimeClass "kata-firecracker"  (Firecracker as Kata backend)
 
 In both cases Kubernetes is the orchestrator and Kata creates a lightweight VM

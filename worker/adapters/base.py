@@ -2,14 +2,14 @@
 Runtime Adapter Interface
 =========================
 
-Conceptual platform ladder used in docs:
-docker -> kCTF -> kata+kCTF -> kata+FC -> FC
+Isolation spectrum used in docs:
+docker -> kCTF -> kata -> kata-firecracker
 
 Actual runtime strings in code today:
 - docker
 - kctf
 - kata
-- firecracker
+- kata-firecracker
 
 To add a new runtime (e.g. gVisor, Kata Containers, QEMU/KVM):
   1. Create a new file in worker/adapters/<your_runtime>.py

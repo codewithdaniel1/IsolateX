@@ -100,7 +100,7 @@ spec:
 
 ## IsolateX integration
 
-When you register a challenge for the Kata + kCTF tier, the orchestrator should set:
+When you register a challenge for the `kata` runtime, the orchestrator should set:
 
 ```json
 {
@@ -116,7 +116,7 @@ The worker agent creates a pod with `runtimeClassName: kata` automatically.
 
 ---
 
-## Security properties (Kata + kCTF)
+## Security properties (`kata`)
 
 | Boundary | What it provides |
 |---|---|
@@ -128,22 +128,22 @@ The worker agent creates a pod with `runtimeClassName: kata` automatically.
 
 ---
 
-## Kata + FC vs Kata + QEMU
+## `kata-firecracker` vs `kata`
 
 Kata can use multiple hypervisors:
 
-**Kata + FC**
+**`kata-firecracker`**
 - Fastest startup
 - Smallest memory footprint
 - Minimal device model
 - Recommended for Kubernetes
 
-**Kata + QEMU**
+**`kata`**
 - Slower startup
 - More device support
 - Better compatibility with complex workloads
 
-For CSAW, use the Kata + FC path when you need the stronger VM-backed step above Kata + kCTF.
+Use `kata-firecracker` when you want the stronger VM-backed option above `kata`.
 
 ---
 
