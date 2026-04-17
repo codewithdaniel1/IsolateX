@@ -5,16 +5,11 @@ Supported runtimes (weakest → strongest isolation):
 
   docker           standard containers
   kctf             Kubernetes pod + nsjail
-  kata             kCTF + Kata Containers (default hypervisor: QEMU / Cloud Hypervisor)
+  kata             kCTF + Kata Containers (default hypervisor: QEMU)
   kata-firecracker kCTF + Kata Containers (Firecracker as the Kata hypervisor backend)
 
 Both kata and kata-firecracker are Kubernetes-native. The difference is which
 hypervisor Kata uses underneath. kata-firecracker has a smaller attack surface.
-
-To add a new runtime:
-  1. Create worker/adapters/<name>.py implementing RuntimeAdapter
-  2. Import and register it in ADAPTERS below
-  3. Add the value to RuntimeType in orchestrator/db/models.py
 """
 from worker.adapters.base import RuntimeAdapter
 from worker.adapters.docker import DockerAdapter

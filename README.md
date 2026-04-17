@@ -96,7 +96,6 @@ CTFd already has the IsolateX plugin mounted via `docker-compose.yml`.
 - [docs/architecture.md](docs/architecture.md) — how it all fits together
 - [docs/api-reference.md](docs/api-reference.md) — orchestrator API reference
 - [docs/security-model.md](docs/security-model.md) — isolation model and threat model
-- [docs/adding-a-runtime.md](docs/adding-a-runtime.md) — how to add a new runtime
 
 ---
 

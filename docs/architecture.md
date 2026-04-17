@@ -14,7 +14,7 @@ IsolateX is a thin connector between CTFd and Kubernetes. It does not replace Ku
                        │ REST (x-api-key)
                        ▼
 ┌──────────────────────────────────────────────────────┐
-│              IsolateX Orchestrator (FastAPI)          │
+│              IsolateX Orchestrator (FastAPI)         │
 │                                                      │
 │  POST /instances          Launch instance            │
 │  GET  /instances/team/... Check status               │
