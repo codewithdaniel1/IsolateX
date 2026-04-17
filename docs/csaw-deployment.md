@@ -35,11 +35,11 @@ Runtime: **Kata + kCTF**
 
 ### Tier 2: Hard Challenges
 
-Runtime: **Kata + Firecracker**
+Runtime: **Firecracker**
 
 **Challenges:** pwn, RCE, AI/code execution, hardcore reversing
 
-**Why Kata + Firecracker:**
+**Why Firecracker:**
 - Dedicated microVM per team (no resource contention)
 - Kernel isolation (players can't kernel-exploit the host)
 - Maximum blast radius control
@@ -192,7 +192,7 @@ curl -X POST http://orchestrator:8080/challenges \
   -d '{
     "id": "web100",
     "name": "Easy Web",
-    "runtime": "kctf",
+    "runtime": "kata",
     "runtime_class": "kata",
     "image": "ghcr.io/osiris/web100:latest",
     "port": 8080,
@@ -203,7 +203,7 @@ curl -X POST http://orchestrator:8080/challenges \
   }'
 ```
 
-### Hard (Kata + Firecracker)
+### Hard (Firecracker)
 
 ```bash
 # Build challenge image for Firecracker

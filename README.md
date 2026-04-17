@@ -32,8 +32,8 @@ IsolateX supports multiple isolation strategies. Choose based on your threat mod
 |---|---|---|---|---|
 | **Docker** | container | static web, beginner | ⭐⭐ | $ |
 | **kCTF** | Kubernetes pod + nsjail | most challenges | ⭐⭐⭐ | $$ |
-| **Kata + kCTF** | Kubernetes + guest kernel | medium-risk challenges | ⭐⭐⭐⭐ | $$$ |
-| **Kata + Firecracker** | Kubernetes routing + microVM | hard challenges (pwn, RCE, AI) | ⭐⭐⭐⭐⭐ | $$$$ |
+| **Kata + kCTF** | kCTF pods + guest kernel | medium-risk challenges | ⭐⭐⭐⭐ | $$$ |
+| **Firecracker** | Kubernetes routing + microVM | hard challenges (pwn, RCE, AI) | ⭐⭐⭐⭐⭐ | $$$$ |
 | **Raw Firecracker** | microVM (KVM, direct) | extreme isolation, full control | ⭐⭐⭐⭐⭐ | $$$$$ |
 
 Adding a new runtime takes one file. See [docs/adding-a-runtime.md](docs/adding-a-runtime.md).
@@ -47,14 +47,14 @@ Adding a new runtime takes one file. See [docs/adding-a-runtime.md](docs/adding-
 
 ```
 Players → Gateway (Traefik/Nginx, TLS) 
-                            → CTFd
-                            → IsolateX Orchestrator
-                            ↓ (policy-driven routing)
-        ┌──────────┬────────┼─────────┬──────────┐
-        ↓          ↓        ↓         ↓          ↓
-      Docker      kCTF    Kata+k8s  Kata+FC   Firecracker
-   container      pod     (guest kernel)    (direct microVM)
-(weak isolation) (medium)  (strong)        (strongest)
+                                 → CTFd
+                                 → IsolateX Orchestrator
+                                 ↓ (policy-driven routing)
+        ┌──────────┬─────────────┼───────────┬───────────────┐
+        ↓          ↓             ↓           ↓               ↓
+      Docker      kCTF       Kata+kCTF    kata+FC        Firecracker
+   container      pod          (guest kernel)          (direct microVM)
+(weak isolation) (medium)         (strong)              (strongest)
 ```
 
 Full diagram: [docs/architecture.md](docs/architecture.md)
@@ -177,13 +177,13 @@ IsolateX ships with example configurations:
 A two-tier approach balancing cost and security:
 
 - **Easy/Medium challenges** (web, crypto, reversing)
-  - Runtime: Kata + Kubernetes
+  - Runtime: Kata + kCTF
   - Isolation: ⭐⭐⭐⭐ (strong)
   - Cost: $$ (good density)
-  - Why: Most challenges don't need extreme isolation. Guest kernel + Kubernetes network policies provide strong defense.
+  - Why: Most challenges don't need extreme isolation. Guest kernel + kCTF network policies provide strong defense.
 
 - **Hard challenges** (pwn, RCE, AI/code execution)
-  - Runtime: Kata + Firecracker (dedicated microVMs)
+  - Runtime: Firecracker (dedicated microVMs)
   - Isolation: ⭐⭐⭐⭐⭐ (strongest)
   - Cost: $$$$ (per-team microVMs)
   - Why: Shell access / code execution demand kernel-level isolation. Firecracker guarantees players can't reach the host or other teams.

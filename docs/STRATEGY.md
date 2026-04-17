@@ -18,12 +18,10 @@ Docker
   ↓ (weak, fast, cheap)
 kCTF (standard Kubernetes)
   ↓ (medium isolation, operational ease)
-Kata + kCTF (Kubernetes + guest kernel)
+Kata + kCTF (kCTF + guest kernel)
   ↓ (strong isolation, still Kubernetes-native)
-Kata + Firecracker (Kubernetes routing + direct microVMs)
-  ↓ (very strong, dedicated per-team)
-Raw Firecracker (direct KVM, full control)
-  ↑ (strongest, most ops overhead)
+Firecracker (direct KVM microVMs)
+  ↑ (strongest, dedicated per-team)
 ```
 
 ---
@@ -72,7 +70,7 @@ CSAW uses a **two-tier approach:**
 **Why:**
 - Cost-efficient (pack many pods in one cluster)
 - Strong isolation (guest kernel blocks kernel exploits)
-- Operational ease (standard Kubernetes lifecycle)
+- Operational ease (standard kCTF lifecycle)
 
 **Isolation level:** ⭐⭐⭐⭐ (very strong for 4-hour event)
 
@@ -82,7 +80,7 @@ CSAW uses a **two-tier approach:**
 - Kernel 0-day in 4 hours is unlikely
 - Cost savings are real
 
-### Tier 2: Hard (Kata + Firecracker)
+### Tier 2: Hard (Firecracker)
 
 **Challenges:** pwn, RCE, AI code execution, hardcore reversing
 
@@ -105,11 +103,11 @@ CSAW uses a **two-tier approach:**
 
 Organizations using IsolateX have full flexibility:
 
-- **University CTF (like CSAW):** Kata + kCTF + Kata + Firecracker (our model)
+- **University CTF (like CSAW):** Kata + kCTF + Firecracker (our model)
 - **Beginner CTF:** Docker only
-- **Enterprise red team lab:** All Raw Firecracker
-- **Security research platform:** Raw Firecracker + custom networking
-- **Serverless sandbox:** All Docker or Kata
+- **Enterprise red team lab:** All Firecracker
+- **Security research platform:** Firecracker + custom networking
+- **Serverless sandbox:** All Docker or Kata + kCTF
 
 The platform doesn't dictate. It supports all of the above.
 
@@ -125,43 +123,39 @@ The platform doesn't dictate. It supports all of the above.
 - Good enough for most CTFs
 
 **Kata + kCTF (strong isolation):**
-- Each pod gets guest kernel (Firecracker or QEMU underneath)
+- Each kCTF pod gets guest kernel (Firecracker or QEMU underneath)
 - Kernel exploit trapped in guest; can't reach host or other pods
-- Still benefits from Kubernetes orchestration
+- Still benefits from kCTF orchestration
 - Small cost overhead (guest kernel + VM startup)
 
 **For CSAW:** Kata + kCTF is worth it because:
 1. Adds real security margin
-2. Keeps Kubernetes simplicity
+2. Keeps kCTF simplicity
 3. Cost per instance is still very low
 4. Easy to implement (one RuntimeClass definition)
 
-### Why Kata + Firecracker instead of Raw Firecracker?
+### Why Firecracker for hard challenges?
 
-**Raw Firecracker (full control):**
-- You orchestrate everything
-- You control the VM lifecycle completely
-- Maximum flexibility
-
-**Kata + Firecracker (Kubernetes routing to Firecracker):**
+**Firecracker (direct KVM microVMs):**
 - Orchestrator picks a Firecracker worker
-- Worker launches microVM directly (not in Kubernetes)
+- Worker launches microVM directly
 - Orchestrator routes traffic to it
-- You get Firecracker's benefits without building the full orchestrator yourself
+- Per-team dedicated kernel and resources
+- Fastest startup (125ms) and highest density
 
-**For hard CSAW challenges:** Kata + Firecracker is the right call because:
-1. We don't need full VM customization
-2. We do need fast startup and high density
-3. Orchestrator handles all the complexity
-4. Team only sees "start challenge" — doesn't matter which backend
+**For hard CSAW challenges:** Firecracker is the right call because:
+1. Shell access requires maximum isolation
+2. Dedicated kernel per team blocks kernel exploits
+3. Fast startup and high density handle scale
+4. Cost-justified for high-risk workloads
 
-### Why not all Raw Firecracker?
+### Why not Firecracker for everything?
 
 Because:
-- 3-4x higher cost
-- 2 weeks extra dev time
+- 4-5x higher cost than kCTF
 - Most challenges don't need it
 - CSAW is 4 hours, not 24/7 public platform
+- kCTF with Kata provides 95% of isolation at 1/4 the cost
 
 ---
 
@@ -229,11 +223,11 @@ That's much stronger than "we built a CTF isolation platform."
 
 | Challenge | Easy level | Medium level | Hard level |
 |---|---|---|---|
-| Web | Docker | Kata+kCTF | Kata+FC or Raw FC |
+| Web | Docker | Kata+kCTF | Firecracker |
 | Crypto | Docker | kCTF | — |
-| Reversing | Docker | kCTF | Kata+kCTF or Kata+FC |
-| Pwn | — | — | Kata+FC or Raw FC |
-| Misc/misc. | Docker | kCTF or Kata+kCTF | Kata+FC if code exec |
-| AI/code exec | — | Kata+kCTF | Kata+FC or Raw FC |
+| Reversing | Docker | kCTF | Kata+kCTF or Firecracker |
+| Pwn | — | — | Firecracker |
+| Misc/misc. | Docker | kCTF or Kata+kCTF | Firecracker if code exec |
+| AI/code exec | — | Kata+kCTF | Firecracker |
 
 **For CSAW:** use Tier 1 (Kata+kCTF) unless it's explicitly a pwn or RCE challenge.
