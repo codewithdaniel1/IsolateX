@@ -64,17 +64,6 @@ else
     SUPPORTS_MICROVM=false
 fi
 
-# ── Cloud Hypervisor ──────────────────────────────────────────────────────────
-echo ""
-echo "▸ Cloud Hypervisor"
-if command -v cloud-hypervisor &>/dev/null; then
-    CHV_VER=$(cloud-hypervisor --version 2>&1 | head -1)
-    ok "cloud-hypervisor found: $CHV_VER"
-else
-    warn "cloud-hypervisor not found (optional — only needed for cloud_hypervisor runtime)"
-    info "Install: https://github.com/cloud-hypervisor/cloud-hypervisor/releases"
-fi
-
 # ── Networking ────────────────────────────────────────────────────────────────
 echo ""
 echo "▸ Networking (microVM tap support)"
@@ -147,7 +136,7 @@ echo ""
 echo "══════════════════════════════════════════"
 echo "  Summary"
 echo "══════════════════════════════════════════"
-[[ $SUPPORTS_MICROVM == true ]] && ok "Firecracker / Cloud Hypervisor: SUPPORTED" || fail "Firecracker / Cloud Hypervisor: NOT supported on this host"
+[[ $SUPPORTS_MICROVM == true ]] && ok "Firecracker (Kata+FC / FC): SUPPORTED" || fail "Firecracker (Kata+FC / FC): NOT supported on this host"
 [[ $SUPPORTS_KCTF == true ]]    && ok "kCTF (Kubernetes): kubectl present"        || warn "kCTF: kubectl not found"
 [[ $SUPPORTS_DOCKER == true ]]  && ok "Docker: SUPPORTED"                          || fail "Docker: NOT supported or daemon down"
 echo ""
