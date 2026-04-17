@@ -45,11 +45,11 @@ destroys it automatically when the TTL expires.
                           │           DELETE /destroy/{id}         │  │
                           │           GET /health                  │  │
                           │           POST /heartbeat              │  │
-                          └─┬───────┬───────┬────────┬────────┬────┘  │
-                            │       │       │        │        │
+                          └─┬───────┬─────────┬──────────┬────────┬┘──┘
+                            │       │         │          │        │
                      ┌──────▼─┐  ┌──▼────┐ ┌──▼────┐ ┌───▼───┐ ┌──▼──┐
                      │Docker  │  │ kCTF  │ │Kata + │ │Kata + │ │ Raw │
-                     │        │  │ Pod   │ │  k8s  │ │ Kata  │ │ FC  │
+                     │        │  │ Pod   │ │  k8s  │ │ FC    │ │ FC  │
                      │ weak   │  │medium │ │strong │ │ very  │ │full │
                      │        │  │       │ │       │ │strong │ │     │
                      │        │  │       │ │       │ │       │ │     │
