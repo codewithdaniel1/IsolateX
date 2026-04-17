@@ -50,11 +50,11 @@ Players → Gateway (Traefik/Nginx, TLS)
                                  → CTFd
                                  → IsolateX Orchestrator
                                  ↓ (policy-driven routing)
-        ┌──────────┬─────────────┼───────────┬───────────────┐
-        ↓          ↓             ↓           ↓               ↓
-      Docker      kCTF       Kata+kCTF    kata+FC        Firecracker
-   container      pod          (guest kernel)          (direct microVM)
-(weak isolation) (medium)         (strong)              (strongest)
+        ┌──────────┬──────────┬───────────────┬─────────────┐
+        ↓          ↓          ↓               ↓             ↓
+      Docker      kCTF   Kata+kCTF     Kata+Firecracker    Raw FC
+   container      pod    (guest kernel) (kCTF→microVM)    (direct)
+(weak isolation) (medium)  (strong)      (very strong)    (strongest)
 ```
 
 Full diagram: [docs/architecture.md](docs/architecture.md)
@@ -87,7 +87,7 @@ Orchestrator API: http://localhost:8080/docs
 - [docs/architecture.md](docs/architecture.md) — Full architecture + ASCII diagram + request flow
 
 **Event deployment:**
-- [docs/csaw-deployment.md](docs/csaw-deployment.md) — **CSAW 2026 deployment guide** (Kata + kCTF + Kata + Firecracker)
+- [docs/csaw-deployment.md](docs/csaw-deployment.md) — **CSAW 2026 deployment guide** (Kata + kCTF + Firecracker)
 
 **Setup guides:**
 - [docs/kctf-setup.md](docs/kctf-setup.md) — Fresh kCTF / Kubernetes cluster setup

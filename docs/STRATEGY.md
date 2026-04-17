@@ -20,8 +20,10 @@ kCTF (standard Kubernetes)
   ↓ (medium isolation, operational ease)
 Kata + kCTF (kCTF + guest kernel)
   ↓ (strong isolation, still Kubernetes-native)
-Firecracker (direct KVM microVMs)
-  ↑ (strongest, dedicated per-team)
+Kata + Firecracker (kCTF routing to Firecracker microVMs)
+  ↓ (very strong, Kubernetes-orchestrated microVMs)
+Raw Firecracker (direct KVM, full control)
+  ↑ (strongest, maximum flexibility)
 ```
 
 ---
@@ -41,21 +43,21 @@ Firecracker (direct KVM microVMs)
 - Docker: $0.01 per instance
 - kCTF: $0.05 per instance (Kubernetes overhead)
 - Kata + kCTF: $0.08 per instance (guest kernel overhead)
-- Kata + Firecracker: $0.15 per instance (dedicated microVM)
-- Raw Firecracker: $0.20 per instance (max control)
+- Kata + Firecracker: $0.12 per instance (Kubernetes routing to microVM)
+- Raw Firecracker: $0.20 per instance (direct control, max flexibility)
 
 For an event with ~200 concurrent instances, that's:
 - All Docker: $2/hour
 - All Kata + kCTF: $9.60/hour
-- Hybrid (Kata+k8s + Kata+FC): $12-15/hour
+- Hybrid (Kata+kCTF + Firecracker): $12-15/hour
 
 ### Operational simplicity
 
 - Docker: trivial
 - kCTF: simple (one kubectl)
 - Kata + kCTF: simple (add one RuntimeClass)
-- Kata + Firecracker: moderate (manage Firecracker pool)
-- Raw Firecracker: complex (build orchestrator)
+- Kata + Firecracker: moderate (Kubernetes routing to microVMs)
+- Raw Firecracker: complex (direct orchestration)
 
 ---
 
