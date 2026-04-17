@@ -1,0 +1,163 @@
+version: "3.9"
+
+# IsolateX full dev stack
+# Services: orchestrator, worker (docker runtime), CTFd, Postgres, Redis, Traefik
+#
+# Start everything:
+#   docker compose up -d
+#
+# Firecracker workers are NOT in this compose — they require a bare-metal host.
+# See docs/firecracker-host-setup.md
+#
+# CTFd: http://localhost:8000
+# Orchestrator API: http://localhost:8080
+# Traefik dashboard: disabled in prod; enable in gateway/traefik/traefik.yml for dev
+
+networks:
+  isolatex_internal:
+    driver: bridge
+  isolatex_challenges:
+    driver: bridge
+    internal: true    # challenge containers have no direct internet by default
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"
+
+volumes:
+  postgres_data:
+  redis_data:
+  traefik_acme:
+
+services:
+  # ── Postgres ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: isolatex
+      POSTGRES_PASSWORD: isolatex
+      POSTGRES_DB: isolatex
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - isolatex_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U isolatex"]
+      interval: 5s
+      retries: 10
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
+    volumes:
+      - redis_data:/data
+    networks:
+      - isolatex_internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  # ── Orchestrator ────────────────────────────────────────────────────────────
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://isolatex:isolatex@postgres:5432/isolatex
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: dev-secret-change-in-prod
+      API_KEY: dev-api-key-change-in-prod
+      FLAG_HMAC_SECRET: dev-flag-secret-change-in-prod
+      GATEWAY_TYPE: traefik
+      BASE_DOMAIN: localhost
+      TLS_ENABLED: "false"
+      DEFAULT_TTL_SECONDS: "3600"
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - isolatex_internal
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      retries: 5
+
+  # ── Worker (Docker runtime — usable without KVM) ─────────────────────────
+  worker-docker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      RUNTIME: docker
+      ORCHESTRATOR_URL: http://orchestrator:8080
+      ORCHESTRATOR_API_KEY: dev-api-key-change-in-prod
+      WORKER_ID: worker-docker-01
+      DOCKER_NETWORK: isolatex_challenges
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    networks:
+      - isolatex_internal
+    ports:
+      - "9090:9090"
+
+  # ── CTFd ───────────────────────────────────────────────────────────────────
+  ctfd:
+    image: ctfd/ctfd:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+pymysql://ctfd:ctfd@ctfd-db/ctfd
+      REDIS_URL: redis://redis:6379/1
+      SECRET_KEY: dev-ctfd-secret-change-in-prod
+      ISOLATEX_URL: http://orchestrator:8080
+      ISOLATEX_API_KEY: dev-api-key-change-in-prod
+    depends_on:
+      - ctfd-db
+      - redis
+    networks:
+      - isolatex_internal
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ctfd-plugin:/opt/CTFd/CTFd/plugins/isolatex
+
+  ctfd-db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ctfdrootpassword
+      MYSQL_DATABASE: ctfd
+      MYSQL_USER: ctfd
+      MYSQL_PASSWORD: ctfd
+    networks:
+      - isolatex_internal
+
+  # ── Traefik gateway ─────────────────────────────────────────────────────────
+  traefik:
+    image: traefik:v3.0
+    restart: unless-stopped
+    command:
+      - "--configFile=/etc/traefik/traefik.yml"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./gateway/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./gateway/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - traefik_acme:/data
+    networks:
+      - isolatex_internal
+    depends_on:
+      - orchestrator
+      - ctfd

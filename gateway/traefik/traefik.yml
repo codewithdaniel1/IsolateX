@@ -1,0 +1,52 @@
+# IsolateX — Traefik static configuration
+# Deploy alongside the orchestrator.
+# Traefik polls the orchestrator's /traefik/config endpoint every 5s
+# to pick up new instance routes without a restart.
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+log:
+  level: INFO
+
+accessLog: {}
+
+api:
+  dashboard: false   # set to true only on a management-only interface
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: infra@osiris.io     # replace with your email
+      storage: /data/acme.json
+      httpChallenge:
+        entryPoint: web
+
+providers:
+  # Static config for orchestrator and CTFd
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+  # IsolateX dynamic instance routes — orchestrator serves this
+  http:
+    endpoint: "http://orchestrator:8080/traefik/config"
+    pollInterval: "5s"
+    pollTimeout: "5s"

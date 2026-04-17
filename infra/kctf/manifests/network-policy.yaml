@@ -1,0 +1,54 @@
+# Default deny all east-west traffic in the kctf namespace.
+# Challenge pods cannot talk to each other.
+# Only the gateway (Traefik/Nginx) ingress is allowed inbound.
+# Egress is blocked by default; challenges that need outbound add their own policy.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: kctf
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# Allow ingress from the gateway only (labeled isolatex-gateway=true)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-ingress
+  namespace: kctf
+spec:
+  podSelector:
+    matchLabels:
+      app: isolatex-challenge
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: isolatex-gateway
+
+---
+# Allow DNS egress so pods can resolve internal names
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: kctf
+spec:
+  podSelector:
+    matchLabels:
+      app: isolatex-challenge
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP

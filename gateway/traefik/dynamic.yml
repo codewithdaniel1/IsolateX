@@ -1,0 +1,44 @@
+# IsolateX — Traefik dynamic configuration (static services)
+# Instance routes are generated dynamically by the orchestrator
+# and served from /traefik/config. Only put permanent services here.
+
+http:
+  routers:
+    # CTFd scoreboard
+    ctfd:
+      rule: "Host(`ctf.osiris.sh`)"
+      service: ctfd
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+
+    # Orchestrator health (internal only — remove if not needed externally)
+    orchestrator-health:
+      rule: "Host(`infra.ctf.osiris.sh`) && Path(`/health`)"
+      service: orchestrator
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - infra-ip-allowlist
+
+  services:
+    ctfd:
+      loadBalancer:
+        servers:
+          - url: "http://ctfd:8000"
+
+    orchestrator:
+      loadBalancer:
+        servers:
+          - url: "http://orchestrator:8080"
+
+  middlewares:
+    # Allow only known admin IPs to hit orchestrator directly
+    infra-ip-allowlist:
+      ipAllowList:
+        sourceRange:
+          - "127.0.0.1/32"
+          - "10.0.0.0/8"      # adjust to your management subnet
