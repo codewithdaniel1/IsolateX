@@ -21,10 +21,11 @@ class InstanceStatus(str, enum.Enum):
 
 
 class RuntimeType(str, enum.Enum):
-    firecracker      = "firecracker"
-    cloud_hypervisor = "cloud_hypervisor"
-    kctf             = "kctf"
-    docker           = "docker"
+    docker           = "docker"           # weak isolation, fast, cheap
+    kctf             = "kctf"             # medium isolation, standard k8s
+    kata             = "kata"             # strong isolation, k8s + guest kernel
+    firecracker      = "firecracker"      # strongest isolation, direct microVM
+    cloud_hypervisor = "cloud_hypervisor" # strong isolation alternative to Firecracker
     # Extend here for future runtimes — see docs/adding-a-runtime.md
 
 

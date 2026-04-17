@@ -10,16 +10,17 @@ from worker.adapters.base import RuntimeAdapter, LaunchRequest, LaunchResult
 from worker.adapters.firecracker import FirecrackerAdapter
 from worker.adapters.cloud_hypervisor import CloudHypervisorAdapter
 from worker.adapters.kctf import KCTFAdapter
+from worker.adapters.kata import KataAdapter
 from worker.adapters.docker import DockerAdapter
 
 ADAPTERS: dict[str, type[RuntimeAdapter]] = {
     "firecracker":      FirecrackerAdapter,
     "cloud_hypervisor": CloudHypervisorAdapter,
     "kctf":             KCTFAdapter,
+    "kata":             KataAdapter,        # Kata + Kubernetes
     "docker":           DockerAdapter,
-    # "gvisor":         GVisorAdapter,        # example future runtime
-    # "kata":           KataAdapter,          # example future runtime
-    # "qemu":           QEMUAdapter,          # example future runtime
+    # "gvisor":         GVisorAdapter,      # example future runtime
+    # "qemu":           QEMUAdapter,        # example future runtime
 }
 
 

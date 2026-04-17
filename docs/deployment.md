@@ -1,5 +1,15 @@
 # Deployment Guide
 
+## Quick reference
+
+| Use case | Guidance |
+|---|---|
+| **CSAW event** | See [csaw-deployment.md](csaw-deployment.md) |
+| **Local dev** | Docker Compose (this doc, "Local dev" section) |
+| **Production** | Kubernetes + choose runtime (this doc, "Production" section) |
+
+---
+
 ## Local dev (fastest path)
 
 Requires: Docker, Docker Compose
@@ -146,12 +156,13 @@ uvicorn worker.main:app --host 0.0.0.0 --port 9090
 
 | Challenge type | Recommended runtime | Why |
 |---|---|---|
-| Static web / beginner | docker | Lightweight, fast, easy to build |
-| Web exploitation | docker or kctf | Container-level isolation usually sufficient |
-| Pwn / binary / RCE | firecracker | KVM isolation; shell access can't escape |
-| Malware / sandbox escape | firecracker | Strongest isolation |
-| Network challenges | kctf | Kubernetes networking is flexible |
-| AI / code execution | firecracker | Code execution needs kernel-level isolation |
+| Static web / beginner | Docker | Lightweight, fast, easy to build |
+| Web exploitation | kCTF | Container-level + nsjail isolation sufficient |
+| Medium-risk web / crypto | Kata + kCTF | Guest kernel isolation, cost-efficient |
+| Pwn / binary / RCE | Kata + Firecracker | KVM isolation; shell access can't escape |
+| Malware / sandbox escape | Raw Firecracker | Strongest isolation, full control |
+| Network challenges | kCTF or Kata + kCTF | Kubernetes networking is flexible |
+| AI / code execution | Kata + Firecracker | Code execution needs kernel-level isolation |
 
 ---
 

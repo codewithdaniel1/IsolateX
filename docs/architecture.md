@@ -11,15 +11,15 @@ destroys it automatically when the TTL expires.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                          Internet / Players                          │
+│                          Internet / Players                         │
 └────────────────────────────┬────────────────────────────────────────┘
                              │ HTTPS
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    Gateway (Traefik or Nginx)                        │
+│                    Gateway (Traefik or Nginx)                       │
 │  ctf.osiris.sh          → CTFd (scoreboard)                         │
-│  ab12cd.web200.ctf...   → Player A's web200 instance               │
-│  ef34gh.web200.ctf...   → Player B's web200 instance               │
+│  ab12cd.web200.ctf...   → Player A's web200 instance                │
+│  ef34gh.web200.ctf...   → Player B's web200 instance                │
 │  TLS terminated here (Let's Encrypt)                                │
 └──────────┬──────────────────────────────────┬───────────────────────┘
            │                                  │
@@ -27,7 +27,7 @@ destroys it automatically when the TTL expires.
 ┌──────────────────┐                ┌─────────────────────────────────┐
 │   CTFd           │  REST API      │   IsolateX Orchestrator         │
 │   (stock)        │◄──────────────►│   (FastAPI / Python)            │
-│                  │                │                                  │
+│                  │                │                                 │
 │  Scoreboard      │  IsolateX      │  • POST /instances (launch)     │
 │  Auth            │  plugin        │  • DELETE /instances/{id}       │
 │  Challenges      │  injects       │  • TTL reaper (background)      │
@@ -37,31 +37,30 @@ destroys it automatically when the TTL expires.
                                     └──────────────┬──────────────────┘
                                                    │
                                     ┌──────────────┴──────────────────┐
-                                    │        Worker Agents             │
-                                    │  (one per host, one per runtime) │
-                                    │                                  │
+                                    │        Worker Agents            │
+                                    │  (one per host, one per runtime)│
+                                    │                                 │
                           ┌─────────┴──────────────────────────────┐  │
-                          │           POST /launch                  │  │
-                          │           DELETE /destroy/{id}          │  │
-                          │           GET /health                   │  │
-                          │           POST /heartbeat               │  │
-                          └────┬──────────────┬────────────┬───────┘  │
-                               │              │            │
-                    ┌──────────▼──┐  ┌────────▼────┐  ┌──▼──────────┐
-                    │ Firecracker │  │   kCTF Pod  │  │   Docker    │
-                    │ microVM     │  │ (k8s+nsjail)│  │  container  │
-                    │ per team    │  │  per team   │  │  per team   │
-                    │             │  │             │  │             │
-                    │ KVM-based   │  │ NetworkPolicy│  │ hardened    │
-                    │ isolation   │  │ deny-all    │  │ no caps     │
-                    │ jailer      │  │ LimitRange  │  │ read-only   │
-                    │ seccomp     │  │ PodSecurity │  │ no privesc  │
-                    └─────────────┘  └─────────────┘  └─────────────┘
+                          │           POST /launch                 │  │
+                          │           DELETE /destroy/{id}         │  │
+                          │           GET /health                  │  │
+                          │           POST /heartbeat              │  │
+                          └─┬───────┬───────┬────────┬────────┬────┘  │
+                            │       │       │        │        │
+                     ┌──────▼─┐  ┌──▼────┐ ┌──▼────┐ ┌───▼───┐ ┌──▼──┐
+                     │Docker  │  │ kCTF  │ │Kata + │ │Kata + │ │ Raw │
+                     │        │  │ Pod   │ │  k8s  │ │ Kata  │ │ FC  │
+                     │ weak   │  │medium │ │strong │ │ very  │ │full │
+                     │        │  │       │ │       │ │strong │ │     │
+                     │        │  │       │ │       │ │       │ │     │
+                     └────────┘  └───────┘ └───────┘ └───────┘ └─────┘
+                (guest kernel)   (nsjail+     (nsjail+ (KVM     (KVM +
+                                NetworkPol)    Firecracker)    direct)
 
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     Data Layer                                       │
-│   Postgres — instance state, workers, challenges                     │
-│   Redis    — session cache, lease tracking                           │
+│                     Data Layer                                      │
+│   Postgres — instance state, workers, challenges                    │
+│   Redis    — session cache, lease tracking                          │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -117,10 +116,11 @@ IsolateX/
   worker/              FastAPI agent (runs on compute hosts)
     adapters/          Runtime implementations
       base.py          RuntimeAdapter interface (implement this for new runtimes)
-      firecracker.py   Firecracker microVM adapter
-      cloud_hypervisor.py  Cloud Hypervisor adapter
-      kctf.py          Kubernetes/kCTF adapter
-      docker.py        Docker adapter
+      docker.py        Docker container adapter
+      kctf.py          Kubernetes + nsjail adapter
+      kata.py          Kubernetes + Kata (guest kernel) adapter
+      firecracker.py   Firecracker microVM adapter (direct)
+      cloud_hypervisor.py  Cloud Hypervisor adapter (direct)
       __init__.py      Registry — add new runtimes here
     networking/        tap device helpers (microVMs)
 
@@ -138,4 +138,6 @@ IsolateX/
     scripts/           check-hardware.sh
 
   docs/                All documentation
+    csaw-deployment.md CSAW event-specific deployment guide
+    kata-setup.md      Kata Containers setup guide
 ```
