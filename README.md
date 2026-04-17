@@ -40,7 +40,7 @@ Timer hits zero → instance auto-destroyed
 |---|---|---|
 | `docker` | Standard container | ⭐⭐ |
 | `kctf` | Kubernetes pod + nsjail | ⭐⭐⭐ |
-| `kata` | kCTF + Kata (guest kernel via QEMU / Cloud Hypervisor) | ⭐⭐⭐⭐ |
+| `kata` | kCTF + Kata (guest kernel via QEMU) | ⭐⭐⭐⭐ |
 | `kata-firecracker` | kCTF + Kata (guest kernel via Firecracker backend) | ⭐⭐⭐⭐+ |
 
 All four are Kubernetes-native. `kata` and `kata-firecracker` both use Kata Containers — the only difference is which hypervisor Kata uses under the hood. Both give each workload its own kernel.
