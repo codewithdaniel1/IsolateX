@@ -1,158 +1,160 @@
-# Orchestrator API Reference
-
-All requests require the header `x-api-key: <your-api-key>`.
+# IsolateX API Reference
 
 Base URL: `http://orchestrator:8080`
+
+All endpoints require the header:
+```
+x-api-key: <your API key>
+```
 
 ---
 
 ## Instances
 
-### POST /instances
-Launch a new challenge instance for a team.
-
-**Request**
+### Launch instance
+```
+POST /instances
+```
 ```json
-{
-  "team_id": "team-42",
-  "challenge_id": "web300"
-}
+{ "team_id": "team-42", "challenge_id": "web100" }
+```
+Returns `201` with the instance object. Returns `409` if this team already has a running instance for this challenge.
+
+### Get instance by ID
+```
+GET /instances/{instance_id}
 ```
 
-**Response 201**
+### Get active instance for a team
+```
+GET /instances/team/{team_id}/{challenge_id}
+```
+Returns `404` if no active instance exists.
+
+### Stop instance
+```
+DELETE /instances/{instance_id}
+```
+Returns `204`. Destroys the instance and deregisters the gateway route.
+
+### Restart instance
+```
+POST /instances/{instance_id}/restart
+```
+Destroys the current instance and launches a new one for the same team + challenge. **TTL resets to the full challenge default.**
+
+Returns the new instance object.
+
+### Renew instance TTL
+```
+POST /instances/{instance_id}/renew
+```
+Extends the TTL by the challenge's `ttl_seconds`. Never extends past **2 hours from the current time**.
+
+Returns:
+```json
+{
+  "expires_at": "2026-04-17T20:00:00Z",
+  "seconds_added": 1800
+}
+```
+Returns `409` if the instance is already at the 2-hour cap.
+
+---
+
+## Instance object
+
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "team_id": "team-42",
-  "challenge_id": "web300",
-  "runtime": "firecracker",
-  "status": "pending",
-  "endpoint": null,
-  "expires_at": "2026-04-17T03:00:00Z",
-  "created_at": "2026-04-17T02:00:00Z"
+  "challenge_id": "web100",
+  "runtime": "kata",
+  "status": "running",
+  "endpoint": "https://ab12cd34.web100.ctf.osiris.sh",
+  "flag": "flag{...}",
+  "expires_at": "2026-04-17T19:30:00Z",
+  "started_at": "2026-04-17T19:00:00Z",
+  "created_at": "2026-04-17T19:00:00Z"
 }
 ```
 
-**409** — Instance already running for this team+challenge (return existing)
-**404** — Challenge not found
-**503** — No available worker for this runtime
-
----
-
-### GET /instances/{instance_id}
-Get instance by ID.
-
-**Response 200** — same shape as POST response, with `endpoint` populated once running
-
----
-
-### GET /instances/team/{team_id}/{challenge_id}
-Get the active instance for a team + challenge.
-
-**404** — No active instance
-
----
-
-### DELETE /instances/{instance_id}
-Destroy an instance immediately (before TTL).
-
-**Response 204**
-
----
-
-## Workers
-
-### POST /workers
-Register a worker (called automatically by the worker agent on startup).
-
-**Request**
-```json
-{
-  "id": "worker-fc-01",
-  "address": "10.0.1.5",
-  "agent_port": 9090,
-  "runtime": "firecracker",
-  "max_instances": 100
-}
-```
-
----
-
-### POST /workers/{worker_id}/heartbeat
-Update worker last-seen timestamp. Workers call this every 15s.
-
-**Response 204**
-
----
-
-### GET /workers
-List all active workers.
-
----
-
-### DELETE /workers/{worker_id}
-Deregister a worker.
+**Status values:** `pending` → `running` → `destroyed` / `expired` / `error`
 
 ---
 
 ## Challenges
 
-### POST /challenges
-Register a challenge.
-
-Valid `runtime` values are `docker`, `kctf`, `kata`, and `firecracker`.
-
-**Request**
+### Register challenge
+```
+POST /challenges
+```
 ```json
 {
-  "id": "web300",
-  "name": "Web 300",
-  "runtime": "docker",
-  "image": "ghcr.io/osiris/web300:latest",
-  "cpu_count": 1,
-  "memory_mb": 512,
+  "id": "web100",
+  "name": "Web 100",
+  "runtime": "kata",
+  "image": "ghcr.io/osiris/web100:latest",
   "port": 8080,
+  "cpu_count": 1,
+  "memory_mb": 256,
   "ttl_seconds": 3600,
-  "flag_salt": "optional-random-salt"
+  "flag_salt": "<openssl rand -hex 16>"
 }
 ```
 
-For Firecracker, use `kernel_image` and `rootfs_image` instead of `image`.
+`ttl_seconds` is optional. Omitting it uses the global default (1800s = 30 min).
+
+**Runtimes:** `docker` | `kctf` | `kata` | `kata-firecracker`
+
+### List challenges
+```
+GET /challenges
+```
+
+### Get challenge
+```
+GET /challenges/{challenge_id}
+```
+
+### Delete challenge
+```
+DELETE /challenges/{challenge_id}
+```
 
 ---
 
-### GET /challenges
-List all registered challenges.
+## Workers
+
+### List workers
+```
+GET /workers
+```
+
+### Register worker (called by worker agent on startup)
+```
+POST /workers
+```
+```json
+{
+  "id": "worker-kata-01",
+  "address": "10.0.1.5",
+  "agent_port": 9090,
+  "runtime": "kata",
+  "max_instances": 50
+}
+```
+
+### Worker heartbeat
+```
+POST /workers/{worker_id}/heartbeat
+```
 
 ---
 
-### GET /challenges/{challenge_id}
-Get a challenge by ID.
+## Traefik config (internal)
 
----
-
-### DELETE /challenges/{challenge_id}
-Remove a challenge.
-
----
-
-## Gateway
-
-### GET /traefik/config
-Returns Traefik dynamic configuration for all running instances.
-Traefik polls this endpoint every 5 seconds.
-
----
-
-## Health
-
-### GET /health
-Returns `{"status": "ok"}`. No API key required.
-
----
-
-## Metrics
-
-### GET /metrics
-Prometheus metrics endpoint. No API key required.
-Protect this endpoint with a firewall rule or IP allowlist in production.
+```
+GET /traefik/config
+```
+Returns dynamic route config for Traefik HTTP provider polling. Not for direct use.

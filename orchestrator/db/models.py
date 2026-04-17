@@ -21,14 +21,17 @@ class InstanceStatus(str, enum.Enum):
 
 
 class RuntimeType(str, enum.Enum):
-    # Platform spectrum order in docs:
-    # docker -> kCTF -> kata+kCTF -> kata+FC -> FC
-    # Actual runtime strings remain the four enum values below.
-    docker           = "docker"           # weak isolation, fast, cheap
-    kctf             = "kctf"             # medium isolation, standard k8s
-    kata             = "kata"             # Kata + kCTF tier
-    firecracker      = "firecracker"      # Kata + FC / FC tier
-    # Extend here for future runtimes — see docs/adding-a-runtime.md
+    # Isolation spectrum (weakest → strongest):
+    #   docker  →  kctf  →  kata  →  kata-firecracker
+    #
+    # docker          standard container, weakest isolation
+    # kctf            Kubernetes pod + nsjail
+    # kata            kCTF + Kata Containers (default hypervisor: QEMU/Cloud Hypervisor)
+    # kata_firecracker kCTF + Kata Containers (Firecracker as Kata hypervisor backend)
+    docker           = "docker"
+    kctf             = "kctf"
+    kata             = "kata"
+    kata_firecracker = "kata-firecracker"
 
 
 class Instance(Base):
@@ -43,7 +46,9 @@ class Instance(Base):
     endpoint     = Column(String, nullable=True)
     backend_port = Column(Integer, nullable=True)
     flag         = Column(String, nullable=True)
+    # TTL fields
     expires_at   = Column(DateTime(timezone=True), nullable=False)
+    started_at   = Column(DateTime(timezone=True), nullable=True)
     created_at   = Column(DateTime(timezone=True), server_default=func.now())
     updated_at   = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -66,16 +71,12 @@ class Challenge(Base):
     id           = Column(String, primary_key=True)
     name         = Column(String, nullable=False)
     runtime      = Column(SAEnum(RuntimeType), nullable=False)
-    # microVM fields
-    kernel_image = Column(String, nullable=True)
-    rootfs_image = Column(String, nullable=True)
-    # container fields
-    image        = Column(String, nullable=True)
-    # resource limits
+    image        = Column(String, nullable=True)   # container image (docker/kctf/kata)
     cpu_count    = Column(Integer, default=1)
     memory_mb    = Column(Integer, default=512)
     port         = Column(Integer, nullable=False, default=8888)
-    ttl_seconds  = Column(Integer, default=3600)
+    # TTL: None means use global default (settings.default_ttl_seconds = 1800)
+    # Per-challenge override in seconds. Max enforced at renew time: 7200 (2 hours).
+    ttl_seconds  = Column(Integer, nullable=True)
     flag_salt    = Column(String, nullable=False)
-    # raw extra config passed through to the runtime adapter
     extra_config = Column(Text, nullable=True)

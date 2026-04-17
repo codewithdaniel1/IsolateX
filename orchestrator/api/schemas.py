@@ -17,7 +17,9 @@ class InstanceResponse(BaseModel):
     runtime: RuntimeType
     status: InstanceStatus
     endpoint: Optional[str] = None
+    flag: Optional[str] = None
     expires_at: datetime
+    started_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
@@ -48,13 +50,13 @@ class ChallengeCreate(BaseModel):
     id: str
     name: str
     runtime: RuntimeType
-    kernel_image: Optional[str] = None
-    rootfs_image: Optional[str] = None
     image: Optional[str] = None
     cpu_count: int = 1
     memory_mb: int = 512
     port: int = 8888
-    ttl_seconds: int = 3600
+    # Optional TTL override in seconds. If omitted, global default (1800s) is used.
+    # Players can renew instances but never past 2 hours from current time.
+    ttl_seconds: Optional[int] = None
     flag_salt: str = Field(default_factory=lambda: __import__("secrets").token_hex(16))
     extra_config: Optional[str] = None
 
@@ -66,12 +68,16 @@ class ChallengeResponse(BaseModel):
     cpu_count: int
     memory_mb: int
     port: int
-    ttl_seconds: int
+    ttl_seconds: Optional[int] = None
 
     class Config:
         from_attributes = True
 
 
+class RenewResponse(BaseModel):
+    expires_at: datetime
+    seconds_added: int
+
+
 class TraefikRouteConfig(BaseModel):
-    """Schema returned by /traefik/config for Traefik HTTP provider polling."""
     http: dict

@@ -6,16 +6,15 @@ Adds per-team on-demand challenge instances to stock CTFd.
 Install:
   cp -r ctfd-plugin/ <CTFd>/CTFd/plugins/isolatex/
 
-The plugin:
-- Adds a "Launch Instance" / "Stop Instance" button to challenge pages
-  for any challenge tagged with isolatex:true
-- Calls the IsolateX orchestrator API on behalf of the authenticated team
-- Shows the team their unique endpoint and TTL countdown
-- Polls instance status every 5 seconds until running
+What it does:
+  - Adds a Live Instance panel to any challenge tagged with isolatex:true
+  - Players can Launch, Restart, Stop, and Renew their instance
+  - Shows a live countdown timer (auto-stops when TTL expires)
+  - TTL resets on Restart; Renew extends up to a 2-hour hard cap
 
-Config (set in CTFd admin panel → Plugins → IsolateX):
-  ISOLATEX_URL      URL of the orchestrator  e.g. http://orchestrator:8080
-  ISOLATEX_API_KEY  Shared secret            (generate with: openssl rand -hex 32)
+Config (environment variables or CTFd admin → Plugins → IsolateX):
+  ISOLATEX_URL      URL of the IsolateX orchestrator  e.g. http://orchestrator:8080
+  ISOLATEX_API_KEY  Shared secret (generate: openssl rand -hex 32)
 """
 from flask import Blueprint, jsonify
 from CTFd.utils.decorators import authed_only
@@ -43,14 +42,30 @@ def _team_id() -> str:
     return f"user-{user.id}"
 
 
-def _get_team_instance(challenge_id: str):
+def _get_active_instance(challenge_id: str):
     tid = _team_id()
-    resp = httpx.get(
+    return httpx.get(
         f"{ORCHESTRATOR_URL}/instances/team/{tid}/{challenge_id}",
         headers=_headers(),
         timeout=10.0,
     )
-    return resp
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+@blueprint.route("/instance/<challenge_id>", methods=["GET"])
+@authed_only
+def get_instance(challenge_id: str):
+    try:
+        resp = _get_active_instance(challenge_id)
+        if resp.status_code == 404:
+            return jsonify({"status": "none"}), 200
+        resp.raise_for_status()
+        return jsonify(resp.json())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @blueprint.route("/instance/<challenge_id>", methods=["POST"])
@@ -65,7 +80,6 @@ def launch_instance(challenge_id: str):
             timeout=30.0,
         )
         if resp.status_code == 409:
-            # Already running — fetch and return existing
             return get_instance(challenge_id)
         resp.raise_for_status()
         return jsonify(resp.json()), 201
@@ -75,28 +89,15 @@ def launch_instance(challenge_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@blueprint.route("/instance/<challenge_id>", methods=["GET"])
-@authed_only
-def get_instance(challenge_id: str):
-    try:
-        resp = _get_team_instance(challenge_id)
-        if resp.status_code == 404:
-            return jsonify({"status": "none"}), 200
-        resp.raise_for_status()
-        return jsonify(resp.json())
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
 @blueprint.route("/instance/<challenge_id>", methods=["DELETE"])
 @authed_only
 def stop_instance(challenge_id: str):
     try:
-        instance_resp = _get_team_instance(challenge_id)
-        if instance_resp.status_code == 404:
+        inst_resp = _get_active_instance(challenge_id)
+        if inst_resp.status_code == 404:
             return jsonify({"status": "none"}), 200
-        instance_resp.raise_for_status()
-        instance_id = instance_resp.json()["id"]
+        inst_resp.raise_for_status()
+        instance_id = inst_resp.json()["id"]
         resp = httpx.delete(
             f"{ORCHESTRATOR_URL}/instances/{instance_id}",
             headers=_headers(),
@@ -104,6 +105,52 @@ def stop_instance(challenge_id: str):
         )
         resp.raise_for_status()
         return jsonify({"status": "stopped"}), 200
+    except httpx.HTTPStatusError as e:
+        return jsonify({"error": e.response.text}), e.response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@blueprint.route("/instance/<challenge_id>/restart", methods=["POST"])
+@authed_only
+def restart_instance(challenge_id: str):
+    """Stop and relaunch. TTL resets to the full challenge default."""
+    try:
+        inst_resp = _get_active_instance(challenge_id)
+        if inst_resp.status_code == 404:
+            return jsonify({"error": "no active instance to restart"}), 404
+        inst_resp.raise_for_status()
+        instance_id = inst_resp.json()["id"]
+        resp = httpx.post(
+            f"{ORCHESTRATOR_URL}/instances/{instance_id}/restart",
+            headers=_headers(),
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        return jsonify(resp.json()), 200
+    except httpx.HTTPStatusError as e:
+        return jsonify({"error": e.response.text}), e.response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@blueprint.route("/instance/<challenge_id>/renew", methods=["POST"])
+@authed_only
+def renew_instance(challenge_id: str):
+    """Extend the TTL. Capped at 2 hours from the current time."""
+    try:
+        inst_resp = _get_active_instance(challenge_id)
+        if inst_resp.status_code == 404:
+            return jsonify({"error": "no active instance to renew"}), 404
+        inst_resp.raise_for_status()
+        instance_id = inst_resp.json()["id"]
+        resp = httpx.post(
+            f"{ORCHESTRATOR_URL}/instances/{instance_id}/renew",
+            headers=_headers(),
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return jsonify(resp.json()), 200
     except httpx.HTTPStatusError as e:
         return jsonify({"error": e.response.text}), e.response.status_code
     except Exception as e:

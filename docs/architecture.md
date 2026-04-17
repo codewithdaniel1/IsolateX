@@ -2,142 +2,107 @@
 
 ## Overview
 
-IsolateX is a per-team challenge isolation platform that plugs into CTFd.
-When a competitor clicks "Launch Instance," IsolateX spins up a private,
-isolated environment just for their team, gives them a unique URL, and
-destroys it automatically when the TTL expires.
+IsolateX is a thin connector between CTFd and Kubernetes. It does not replace Kubernetes — Kubernetes is the orchestrator. IsolateX handles the CTFd-facing API, per-team instance mapping, TTL enforcement, flag derivation, and gateway routing.
 
-## ASCII Diagram
+## Stack
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          Internet / Players                         │
-└────────────────────────────┬────────────────────────────────────────┘
-                             │ HTTPS
-                             ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Gateway (Traefik or Nginx)                       │
-│  ctf.osiris.sh          → CTFd (scoreboard)                         │
-│  ab12cd.web200.ctf...   → Player A's web200 instance                │
-│  ef34gh.web200.ctf...   → Player B's web200 instance                │
-│  TLS terminated here (Let's Encrypt)                                │
-└──────────┬──────────────────────────────────┬───────────────────────┘
-           │                                  │
-           ▼                                  ▼
-┌──────────────────┐                ┌─────────────────────────────────┐
-│   CTFd           │  REST API      │   IsolateX Orchestrator         │
-│   (stock)        │◄──────────────►│   (FastAPI / Python)            │
-│                  │                │                                 │
-│  Scoreboard      │  IsolateX      │  • POST /instances (launch)     │
-│  Auth            │  plugin        │  • DELETE /instances/{id}       │
-│  Challenges      │  injects       │  • TTL reaper (background)      │
-│  Flags           │  Launch btn    │  • Worker picker (least-loaded) │
-└──────────────────┘                │  • Per-team flag derivation     │
-                                    │  • Route registration           │
-                                    └──────────────┬──────────────────┘
-                                                   │
-                                    ┌──────────────┴──────────────────┐
-                                    │        Worker Agents            │
-                                    │  (one per host, one per runtime)│
-                                    │                                 │
-                          ┌─────────┴──────────────────────────────┐  │
-                          │           POST /launch                 │  │
-                          │           DELETE /destroy/{id}         │  │
-                          │           GET /health                  │  │
-                          │           POST /heartbeat              │  │
-                          └─┬───────┬─────────┬──────────┬────────┬┘──┘
-                            │       │         │          │        │
-                     ┌──────▼─┐  ┌──▼────┐ ┌──▼──────┐ ┌──▼────┐ ┌──▼──┐
-                     │Docker  │  │ kCTF  │ │Kata+kCTF│ │Kata+FC│ │ FC │
-                     │        │  │ Pod   │ │         │ │       │ │    │
-                     │ weak   │  │medium │ │ strong  │ │ vstrong│ │max │
-                     │        │  │       │ │         │ │       │ │    │
-                     └────────┘  └───────┘ └─────────┘ └────────┘ └────┘
-                                 (nsjail)   (guest      (VM-     (KVM,
-                                            kernel)      backed)   direct)
-
-┌─────────────────────────────────────────────────────────────────────┐
-│                     Data Layer                                      │
-│   Postgres — instance state, workers, challenges                    │
-│   Redis    — session cache, lease tracking                          │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                    CTFd (stock)                      │
+│   IsolateX plugin injects the instance panel         │
+└──────────────────────┬───────────────────────────────┘
+                       │ REST (x-api-key)
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│              IsolateX Orchestrator (FastAPI)          │
+│                                                      │
+│  POST /instances          Launch instance            │
+│  GET  /instances/team/... Check status               │
+│  DELETE /instances/{id}   Stop instance              │
+│  POST /instances/{id}/restart  Restart (TTL reset)   │
+│  POST /instances/{id}/renew    Extend TTL            │
+│                                                      │
+│  TTL reaper (background)  Auto-destroy on expiry     │
+│  Worker picker            Least-loaded scheduler     │
+│  Flag derivation          HMAC per team+challenge    │
+└──────────────────────┬───────────────────────────────┘
+                       │
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+    ┌──────────┐ ┌──────────┐ ┌──────────────────┐
+    │  Docker  │ │   kCTF   │ │  Kata / Kata+FC  │
+    │  worker  │ │  worker  │ │     worker       │
+    └──────────┘ └──────────┘ └──────────────────┘
+          │            │                │
+          ▼            ▼                ▼
+    Container     K8s pod +       K8s pod +
+                   nsjail        Kata VM
+                                (QEMU or Firecracker
+                                 as Kata backend)
 ```
 
-## Security Boundaries
+## Runtime model
 
-| Layer | Mechanism | What it prevents |
-|---|---|---|
-| Transport | TLS (Let's Encrypt) | Eavesdropping |
-| Authentication | CTFd auth + team session | Unauthorized access |
-| Instance isolation | Firecracker/kCTF/Docker | One team reaching another's runtime |
-| Network isolation | Gateway routing + NetworkPolicy + Docker ICC=false | East-west traffic between instances |
-| Compute limits | CPU/RAM caps per instance | Resource exhaustion DoS |
-| Flag isolation | Per-team HMAC-derived flag | Sharing one flag to solve for others |
-| Lifecycle | TTL auto-destroy + volume wipe | Stale instances leaking state |
-| Worker separation | Worker can only talk to orchestrator, not between workers | Lateral movement |
-
-## Request Flow
+All four runtimes are Kubernetes-native. Workers are FastAPI agents that receive `/launch` and `/destroy` calls from the orchestrator and translate them into Kubernetes API calls.
 
 ```
-1. Player logs in to CTFd (CTFd handles all auth)
-2. Player views a challenge with isolatex:true tag
-3. IsolateX JS widget appears: "Launch Instance"
-4. Player clicks Launch
-5. CTFd plugin → POST /isolatex/instance/<challenge_id>
-6. Plugin → POST orchestrator/instances {team_id, challenge_id}
-7. Orchestrator:
+docker          → containerd → runc → container
+kctf            → containerd → runc → container + nsjail
+kata            → containerd → Kata runtime → QEMU/CHV → guest VM → container
+kata-firecracker → containerd → Kata runtime → Firecracker → guest VM → container
+```
+
+For `kata` and `kata-firecracker`, Kata Containers creates a lightweight VM per pod. The VM has its own kernel. The hypervisor (QEMU vs Firecracker) is a Kata configuration detail — Kubernetes just sees a pod with a RuntimeClass.
+
+## TTL flow
+
+```
+Instance created → expires_at = now + ttl_seconds
+                                (challenge override or global 30-min default)
+
+Player clicks Renew → expires_at += ttl_seconds
+                      (capped: expires_at ≤ now + 2h)
+
+Player clicks Restart → old instance destroyed
+                        new instance created, expires_at = now + ttl_seconds
+
+TTL reaper (every 30s) → finds instances where expires_at ≤ now
+                          calls worker DELETE /destroy/{id}
+                          marks instance destroyed
+                          deregisters gateway route
+```
+
+## Request flow (launch)
+
+```
+1. Player clicks Launch in CTFd
+2. CTFd plugin → POST /isolatex/instance/<challenge_id>
+3. Plugin → POST orchestrator/instances {team_id, challenge_id}
+4. Orchestrator:
    a. Checks no existing running instance for this team+challenge
-   b. Looks up challenge config (runtime, image, limits)
+   b. Looks up challenge (runtime, image, resource limits, ttl_seconds)
    c. Picks least-loaded worker for that runtime
-   d. Creates Instance record (status=pending)
-   e. Fires background task to call worker
-8. Worker agent receives POST /launch
-9. Worker launches the selected runtime tier for that challenge
-10. Worker returns {port: NNNNN}
-11. Orchestrator registers route with gateway
-12. Orchestrator updates Instance: status=running, endpoint=https://...
-13. CTFd plugin polls GET /isolatex/instance/<challenge_id> every 5s
-14. Status becomes "running" → shows endpoint + TTL countdown to player
-15. TTL expires → reaper calls worker DELETE /destroy/<id>
-16. Worker tears down runtime, wipes volumes
-17. Orchestrator marks instance destroyed, deregisters gateway route
+   d. Creates Instance record (status=pending, expires_at set)
+   e. Fires background task → POST worker/launch
+5. Worker launches pod (Docker / kCTF / Kata)
+6. Worker returns {port}
+7. Orchestrator registers route with Traefik
+8. Orchestrator updates Instance: status=running, endpoint=https://...
+9. CTFd plugin polls GET /isolatex/instance/<challenge_id> every 5s
+10. Status = running → shows endpoint + countdown timer
+11. TTL expires → reaper destroys instance, deregisters route
 ```
 
-Note: `Kata + kCTF` and `Kata + FC` are strategy labels in this codebase. The actual runtime strings remain `docker`, `kctf`, `kata`, and `firecracker`.
+## Data layer
 
-## Component Map
+- **Postgres** — instance state, workers, challenges
+- **Redis** — session cache, rate limiting (optional)
+
+## Gateway
+
+Traefik polls the orchestrator's `/traefik/config` endpoint every 5 seconds and updates routes dynamically. Each instance gets a unique subdomain:
 
 ```
-IsolateX/
-  orchestrator/        FastAPI control plane
-    api/               HTTP endpoints
-    core/              business logic (flags, routing, scheduler, worker-picker)
-    db/                SQLAlchemy models + session
-
-  worker/              FastAPI agent (runs on compute hosts)
-    adapters/          Runtime implementations
-      base.py          RuntimeAdapter interface (implement this for new runtimes)
-      docker.py        Docker container adapter
-      kctf.py          Kubernetes + nsjail adapter
-      kata.py          Kubernetes + Kata (guest kernel) adapter
-      firecracker.py   Firecracker microVM adapter (direct)
-      __init__.py      Registry — add new runtimes here
-    networking/        tap device helpers (microVMs)
-
-  ctfd-plugin/         CTFd plugin
-    __init__.py        Flask blueprints + proxy calls to orchestrator
-    assets/isolatex.js Launch/Stop UI widget
-
-  gateway/
-    traefik/           Traefik static + dynamic config
-    nginx/             Nginx config + reload sidecar
-
-  infra/
-    kctf/              kCTF fresh cluster setup + manifests
-    firecracker/       Kernel + rootfs build scripts
-    scripts/           check-hardware.sh
-
-  docs/                All documentation
-    csaw-deployment.md CSAW event-specific deployment guide
-    kata-setup.md      Kata Containers setup guide
+<instance-id-prefix>.<challenge-id>.<base-domain>
+e.g. ab12cd34.web100.ctf.osiris.sh
 ```

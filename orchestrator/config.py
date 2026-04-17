@@ -21,10 +21,14 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://isolatex:isolatex@postgres:5432/isolatex"
     redis_url: str = "redis://redis:6379/0"
 
-    # Instance defaults
-    default_ttl_seconds: int = 3600
-    max_instances_per_team: int = 1
+    # Instance TTL
+    # Global default: 30 minutes. Individual challenges can override via ttl_seconds.
+    # Players can renew up to MAX_TTL_SECONDS (2 hours) from the current time.
+    default_ttl_seconds: int = 1800        # 30 min
+    max_ttl_seconds: int = 7200            # 2 hours hard cap on renew
     reap_interval_seconds: int = 30
+
+    # Worker heartbeat
     worker_heartbeat_timeout_seconds: int = 60
 
     # Gateway

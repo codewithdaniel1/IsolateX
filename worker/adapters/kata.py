@@ -1,19 +1,16 @@
 """
-Kata Containers Adapter (via Kubernetes)
-==========================================
-Kata runs pods inside lightweight VMs via Kubernetes's RuntimeClass.
+Kata Containers adapter (via Kubernetes RuntimeClass).
 
-For kCTF use:
-  - Uses Kubernetes API to create pods with runtimeClassName: kata
-  - Same as the kctf adapter, but with runtime class specified
-  - Gives you guest kernel isolation without leaving Kubernetes
+Handles both kata and kata-firecracker runtimes. The only difference between
+them is which Kubernetes RuntimeClass is selected:
 
-Since Kata is managed by Kubernetes (just a runtime choice), this adapter
-is essentially a wrapper around the Kubernetes API with Kata-specific config.
+  runtime="kata"             → RuntimeClass "kata"  (default hypervisor: QEMU / Cloud Hypervisor)
+  runtime="kata-firecracker" → RuntimeClass "kata-firecracker"  (Firecracker as Kata backend)
 
-In the documented ladder, this adapter maps to the `kata+kCTF` tier.
+In both cases Kubernetes is the orchestrator and Kata creates a lightweight VM
+per pod. The hypervisor is a Kata configuration detail, not an IsolateX detail.
 
-See docs/kata-setup.md for setup and docs/kctf-setup.md for cluster prep.
+See docs/kata-setup.md for cluster setup.
 """
 import asyncio
 import structlog
@@ -26,11 +23,18 @@ from worker.config import settings
 log = structlog.get_logger()
 
 KCTF_NAMESPACE = settings.kctf_namespace
-KATA_RUNTIME_CLASS = "kata"
+
+# RuntimeClass names must exist in the cluster before launching instances.
+# See docs/kata-setup.md for how to create them.
+RUNTIME_CLASS_MAP = {
+    "kata":             "kata",
+    "kata-firecracker": "kata-firecracker",
+}
 
 
 class KataAdapter(RuntimeAdapter):
-    def __init__(self):
+    def __init__(self, runtime: str = "kata"):
+        self._runtime_class = RUNTIME_CLASS_MAP.get(runtime, "kata")
         self._instances: dict[str, dict] = {}
         self._load_kube_config()
 
@@ -53,12 +57,13 @@ class KataAdapter(RuntimeAdapter):
         name = f"isolatex-{req.instance_id[:16]}"
         host_port = _allocate_port(req.instance_id)
 
-        await asyncio.to_thread(self._create_kata_pod, req, name, host_port)
+        await asyncio.to_thread(self._create_pod, req, name, host_port)
         await asyncio.to_thread(self._create_service, req, name, host_port)
 
-        metadata = {"host_port": host_port, "pod_name": name}
+        metadata = {"host_port": host_port, "pod_name": name, "runtime_class": self._runtime_class}
         self._instances[req.instance_id] = metadata
-        log.info("kata instance launched", instance_id=req.instance_id, pod=name)
+        log.info("kata instance launched", instance_id=req.instance_id,
+                 pod=name, runtime_class=self._runtime_class)
         return LaunchResult(port=host_port, metadata=metadata)
 
     async def destroy(self, instance_id: str) -> None:
@@ -69,10 +74,10 @@ class KataAdapter(RuntimeAdapter):
         log.info("kata instance destroyed", instance_id=instance_id, pod=name)
 
     # ------------------------------------------------------------------
-    # Kubernetes operations (synchronous — called via asyncio.to_thread)
+    # Kubernetes operations (sync — called via asyncio.to_thread)
     # ------------------------------------------------------------------
 
-    def _create_kata_pod(self, req: LaunchRequest, name: str, host_port: int):
+    def _create_pod(self, req: LaunchRequest, name: str, host_port: int):
         v1 = k8s_client.CoreV1Api()
         pod = k8s_client.V1Pod(
             metadata=k8s_client.V1ObjectMeta(
@@ -87,7 +92,7 @@ class KataAdapter(RuntimeAdapter):
             spec=k8s_client.V1PodSpec(
                 restart_policy="Never",
                 automount_service_account_token=False,
-                runtime_class_name=KATA_RUNTIME_CLASS,  # ← Use Kata
+                runtime_class_name=self._runtime_class,
                 security_context=k8s_client.V1PodSecurityContext(
                     run_as_non_root=True,
                     run_as_user=65534,

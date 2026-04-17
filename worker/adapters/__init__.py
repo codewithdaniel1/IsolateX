@@ -1,33 +1,34 @@
 """
 Runtime adapter registry.
 
-Platform spectrum order used throughout the docs:
-docker -> kCTF -> kata+kCTF -> kata+FC -> FC
+Supported runtimes (weakest → strongest isolation):
 
-Actual adapter/runtime strings in code:
-- docker
-- kctf
-- kata
-- firecracker
+  docker           standard containers
+  kctf             Kubernetes pod + nsjail
+  kata             kCTF + Kata Containers (default hypervisor: QEMU / Cloud Hypervisor)
+  kata-firecracker kCTF + Kata Containers (Firecracker as the Kata hypervisor backend)
+
+Both kata and kata-firecracker are Kubernetes-native. The difference is which
+hypervisor Kata uses underneath. kata-firecracker has a smaller attack surface.
 
 To add a new runtime:
-1. Create worker/adapters/<runtime_name>.py implementing RuntimeAdapter
-2. Import and register it here
-3. See docs/adding-a-runtime.md for the full checklist
+  1. Create worker/adapters/<name>.py implementing RuntimeAdapter
+  2. Import and register it in ADAPTERS below
+  3. Add the value to RuntimeType in orchestrator/db/models.py
 """
-from worker.adapters.base import RuntimeAdapter, LaunchRequest, LaunchResult
-from worker.adapters.firecracker import FirecrackerAdapter
+from worker.adapters.base import RuntimeAdapter
+from worker.adapters.docker import DockerAdapter
 from worker.adapters.kctf import KCTFAdapter
 from worker.adapters.kata import KataAdapter
-from worker.adapters.docker import DockerAdapter
 
 ADAPTERS: dict[str, type[RuntimeAdapter]] = {
     "docker":           DockerAdapter,
     "kctf":             KCTFAdapter,
-    "kata":             KataAdapter,        # Kata + kCTF tier
-    "firecracker":      FirecrackerAdapter, # Kata + FC / FC tier
-    # "gvisor":         GVisorAdapter,      # example future runtime
-    # "qemu":           QEMUAdapter,        # example future runtime
+    "kata":             KataAdapter,             # Kata with default hypervisor
+    "kata-firecracker": KataAdapter,             # Kata with Firecracker backend
+    # KataAdapter reads the runtime string to select the correct RuntimeClass.
+    # "kata"            → uses RuntimeClass named "kata"
+    # "kata-firecracker" → uses RuntimeClass named "kata-firecracker"
 }
 
 
@@ -35,7 +36,6 @@ def get_adapter(runtime: str) -> RuntimeAdapter:
     cls = ADAPTERS.get(runtime)
     if cls is None:
         raise ValueError(
-            f"Unknown runtime '{runtime}'. Available: {list(ADAPTERS)}. "
-            "See docs/adding-a-runtime.md to add a new one."
+            f"Unknown runtime '{runtime}'. Available: {list(ADAPTERS)}."
         )
-    return cls()
+    return cls(runtime=runtime)
