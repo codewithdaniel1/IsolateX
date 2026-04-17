@@ -33,4 +33,6 @@ def get_adapter(runtime: str) -> RuntimeAdapter:
         raise ValueError(
             f"Unknown runtime '{runtime}'. Available: {list(ADAPTERS)}."
         )
-    return cls(runtime=runtime)
+    if runtime in ("kata", "kata-firecracker"):
+        return cls(runtime=runtime)
+    return cls()

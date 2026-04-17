@@ -116,7 +116,9 @@ services:
 
   # ── CTFd ───────────────────────────────────────────────────────────────────
   ctfd:
-    image: ctfd/ctfd:latest
+    build:
+      context: ./ctfd
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       DATABASE_URL: mysql+pymysql://ctfd:ctfd@ctfd-db/ctfd
