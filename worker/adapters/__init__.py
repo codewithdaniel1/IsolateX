@@ -11,10 +11,10 @@ Supported runtimes (weakest → strongest isolation):
 Both kata and kata-firecracker are Kubernetes-native. The difference is which
 hypervisor Kata uses underneath. kata-firecracker has a smaller attack surface.
 """
-from worker.adapters.base import RuntimeAdapter
-from worker.adapters.docker import DockerAdapter
-from worker.adapters.kctf import KCTFAdapter
-from worker.adapters.kata import KataAdapter
+from .base import RuntimeAdapter
+from .docker import DockerAdapter
+from .kctf import KCTFAdapter
+from .kata import KataAdapter
 
 ADAPTERS: dict[str, type[RuntimeAdapter]] = {
     "docker":           DockerAdapter,

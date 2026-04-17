@@ -13,4 +13,4 @@ COPY . .
 
 # Worker runs as root only when needed for tap/KVM access (microVM runtimes).
 # For Docker runtime, you can run as non-root if the docker socket is group-accessible.
-CMD ["uvicorn", "worker.main:app", "--host", "0.0.0.0", "--port", "9090"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9090"]

@@ -21,9 +21,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from worker.adapters import get_adapter
-from worker.adapters.base import LaunchRequest
-from worker.config import settings
+from adapters import get_adapter
+from adapters.base import LaunchRequest
+from config import settings
 
 log = structlog.get_logger()
 adapter = get_adapter(settings.runtime)

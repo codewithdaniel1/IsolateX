@@ -17,8 +17,8 @@ import structlog
 from kubernetes import client as k8s_client, config as k8s_config
 from kubernetes.client.rest import ApiException
 
-from worker.adapters.base import RuntimeAdapter, LaunchRequest, LaunchResult
-from worker.config import settings
+from .base import RuntimeAdapter, LaunchRequest, LaunchResult
+from config import settings
 
 log = structlog.get_logger()
 

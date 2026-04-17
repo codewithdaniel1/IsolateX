@@ -26,8 +26,8 @@ import asyncio
 import json
 import structlog
 
-from worker.adapters.base import RuntimeAdapter, LaunchRequest, LaunchResult
-from worker.config import settings
+from .base import RuntimeAdapter, LaunchRequest, LaunchResult
+from config import settings
 
 log = structlog.get_logger()
 
