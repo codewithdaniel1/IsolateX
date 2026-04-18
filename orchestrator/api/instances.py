@@ -19,6 +19,7 @@ from orchestrator.db.session import get_db
 from orchestrator.db.models import Instance, InstanceStatus, Challenge, Worker
 from orchestrator.api.schemas import InstanceCreate, InstanceResponse, RenewResponse
 from orchestrator.api.deps import require_api_key
+from orchestrator.api.settings import _get_setting
 from orchestrator.core.flags import derive_flag
 from orchestrator.core.router import register_route, deregister_route
 from orchestrator.core.scheduler_worker import pick_worker
@@ -29,9 +30,12 @@ router = APIRouter(prefix="/instances", tags=["instances"])
 log = structlog.get_logger()
 
 
-def _effective_ttl(challenge: Challenge) -> int:
-    """Return TTL in seconds: per-challenge override or global default."""
-    return challenge.ttl_seconds if challenge.ttl_seconds else settings.default_ttl_seconds
+async def _effective_ttl(db: AsyncSession, challenge: Challenge) -> int:
+    """Return TTL in seconds: per-challenge override, then DB setting, then env default."""
+    if challenge.ttl_seconds:
+        return challenge.ttl_seconds
+    return await _get_setting(db, "default_ttl_seconds", settings.default_ttl_seconds)
+
 
 
 # ---------------------------------------------------------------------------
@@ -145,8 +149,8 @@ async def renew_instance(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Reset the TTL of a running instance back to its original duration from now.
-    Cannot extend past the original started_at + ttl hard cap.
+    Reset the TTL of a running instance to now + original TTL.
+    Capped at max_ttl_seconds from now (global admin setting).
     """
     inst = await _fetch(db, instance_id)
     if not inst:
@@ -155,14 +159,11 @@ async def renew_instance(
         raise HTTPException(status_code=409, detail="can only renew a running instance")
 
     challenge = await _get_challenge(db, inst.challenge_id)
-    ttl = _effective_ttl(challenge)
+    ttl = await _effective_ttl(db, challenge)
     now = datetime.now(timezone.utc)
-    # Hard cap: never go past when it would have expired if renewed at launch
-    hard_cap = inst.started_at + timedelta(seconds=ttl)
 
-    # Reset expiry to now + ttl, but never past hard_cap
-    proposed = now + timedelta(seconds=ttl)
-    new_expires = min(proposed, hard_cap)
+    # Always reset to now + full TTL
+    new_expires = now + timedelta(seconds=ttl)
 
     if new_expires <= inst.expires_at:
         raise HTTPException(status_code=409,
@@ -213,7 +214,7 @@ async def _create_instance_record(
 ) -> Instance:
     instance_id = uuid.uuid4()
     flag = derive_flag(team_id, challenge.id, str(instance_id), challenge.flag_salt)
-    ttl = _effective_ttl(challenge)
+    ttl = await _effective_ttl(db, challenge)
     now = datetime.now(timezone.utc)
 
     inst = Instance(

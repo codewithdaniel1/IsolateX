@@ -232,17 +232,17 @@
   async function doRenew(ctx) {
     disableAll(ctx);
     setStatus(ctx, "Renewing…");
+    let persistMsg = null;
+    let persistCls = "text-danger";
     try {
       const data = await apiFetch(`/isolatex/instance/${ctx.cid}/renew`, "POST");
-      showMsg(ctx, `Time extended by ${Math.round(data.seconds_added / 60)} minutes.`, "text-success");
+      persistMsg = `Timer reset — ${Math.round(data.seconds_added / 60)} minutes added.`;
+      persistCls = "text-success";
     } catch (e) {
-      if (e.status === 409) {
-        showMsg(ctx, "Already at maximum time. Cannot extend further.");
-      } else {
-        showMsg(ctx, `Renew failed: ${e.message}`);
-      }
+      persistMsg = `Renew failed: ${e.message}`;
     }
     await refresh(ctx);
+    if (persistMsg) showMsg(ctx, persistMsg, persistCls);
   }
 
   async function doStop(ctx) {

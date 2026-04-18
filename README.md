@@ -10,7 +10,7 @@ IsolateX gives every team their own isolated challenge environment — players c
 
 - **Launch** — starts a private instance
 - **Restart** — kills and relaunches with a fresh TTL
-- **Renew** — resets the timer back to the original duration (cannot exceed the original TTL from launch)
+- **Renew** — resets the countdown timer back to the full TTL duration from now
 - **Stop** — destroys the instance early
 - **Countdown timer** — live "Expires in 23m 14s" display
 

@@ -22,12 +22,7 @@
             <div class="col-md-3">
               <label class="form-label">Default TTL (minutes)</label>
               <input type="number" class="form-control" id="g-ttl" min="1" max="480">
-              <div class="form-text">How long each instance runs before auto-stopping</div>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Max TTL / Renew Cap (minutes)</label>
-              <input type="number" class="form-control" id="g-max-ttl" min="1" max="480">
-              <div class="form-text">Players cannot renew past this from launch time</div>
+              <div class="form-text">How long each instance runs. Renew always resets to this duration.</div>
             </div>
             <div class="col-md-4">
               <label class="form-label">Default Resource Tier <small class="text-muted">(sets CPU + Memory for all challenges on "Global default")</small></label>
@@ -102,7 +97,6 @@
     try {
       const d = await api("/isolatex/admin/config");
       document.getElementById("g-ttl").value     = secToMin(d.default_ttl_seconds);
-      document.getElementById("g-max-ttl").value = secToMin(d.max_ttl_seconds);
       globalTierCpu = d.default_cpu_count ?? 1;
       document.getElementById("g-tier").value    = String(globalTierCpu);
     } catch(e) { console.error(e); }
@@ -117,7 +111,6 @@
     try {
       await api("/isolatex/admin/config", "POST", {
         default_ttl_seconds: minToSec(document.getElementById("g-ttl").value) || 1800,
-        max_ttl_seconds:     minToSec(document.getElementById("g-max-ttl").value) || 7200,
         default_cpu_count:   cpu,
         default_memory_mb:   tier ? tier.mem : 512,
       });

@@ -84,6 +84,8 @@ services:
       - isolatex_internal
     ports:
       - "8080:8080"
+    volumes:
+      - ./orchestrator:/srv/orchestrator
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s
@@ -105,6 +107,7 @@ services:
       DOCKER_BIND_HOST: 0.0.0.0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./worker:/app
     depends_on:
       orchestrator:
         condition: service_healthy

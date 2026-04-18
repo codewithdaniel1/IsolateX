@@ -8,6 +8,7 @@ from prometheus_client import make_asgi_app
 from orchestrator.db.session import init_db
 from orchestrator.core.scheduler import run_reaper
 from orchestrator.api import instances, workers, challenges, traefik
+from orchestrator.api import settings as settings_api
 from orchestrator.config import settings
 
 structlog.configure(
@@ -52,6 +53,7 @@ app.include_router(instances.router)
 app.include_router(workers.router)
 app.include_router(challenges.router)
 app.include_router(traefik.router)
+app.include_router(settings_api.router)
 
 # Prometheus metrics endpoint
 metrics_app = make_asgi_app()

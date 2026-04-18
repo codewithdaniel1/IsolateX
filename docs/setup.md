@@ -123,8 +123,7 @@ docker build -t my-challenge:latest ./challenges/my-challenge/
 
 Go to **CTFd Admin → Plugins → IsolateX**:
 
-- **Global TTL** — how long each instance runs before auto-stopping (default: 30 min)
-- **Max TTL** — players cannot Renew past this duration from launch time (default: 60 min)
+- **Global TTL** — how long each instance runs before auto-stopping; Renew always resets to this duration (default: 30 min)
 - **Per-challenge CPU tier** — 0.5 / 1 / 2 / 4 cores
 - **Per-challenge Memory tier** — 256 MB / 512 MB / 1 GB / 2 GB
 

@@ -65,6 +65,14 @@ class Worker(Base):
     last_seen     = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class OrchestratorSetting(Base):
+    """Simple key-value store for runtime-configurable orchestrator settings."""
+    __tablename__ = "orchestrator_settings"
+
+    key   = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
+
+
 class Challenge(Base):
     __tablename__ = "challenges"
 

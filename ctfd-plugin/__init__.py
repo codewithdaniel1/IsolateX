@@ -183,9 +183,16 @@ def admin_page():
 @blueprint.route("/admin/config", methods=["GET"])
 @admins_only
 def admin_get_config():
+    # Fetch TTL from orchestrator (single source of truth)
+    try:
+        resp = httpx.get(f"{ORCHESTRATOR_URL}/settings", headers=_headers(), timeout=5.0)
+        resp.raise_for_status()
+        default_ttl = resp.json().get("default_ttl_seconds", 1800)
+    except Exception:
+        default_ttl = int(get_config("isolatex_default_ttl_seconds") or 1800)
+
     return jsonify({
-        "default_ttl_seconds": int(get_config("isolatex_default_ttl_seconds") or 1800),
-        "max_ttl_seconds":     int(get_config("isolatex_max_ttl_seconds") or 7200),
+        "default_ttl_seconds": default_ttl,
         "default_cpu_count":   float(get_config("isolatex_default_cpu_count") or 1),
         "default_memory_mb":   int(get_config("isolatex_default_memory_mb") or 512),
     })
@@ -196,12 +203,25 @@ def admin_get_config():
 @bypass_csrf_protection
 def admin_save_config():
     data = request.get_json(force=True)
-    set_config("isolatex_default_ttl_seconds", data.get("default_ttl_seconds", 1800))
-    set_config("isolatex_max_ttl_seconds",     data.get("max_ttl_seconds", 7200))
-    set_config("isolatex_default_cpu_count",   data.get("default_cpu_count", 1))
-    set_config("isolatex_default_memory_mb",   data.get("default_memory_mb", 512))
-    # Push defaults to orchestrator env is not needed — orchestrator reads its own env.
-    # Per-challenge overrides are the canonical way to override per-challenge.
+    default_ttl = data.get("default_ttl_seconds", 1800)
+    cpu = data.get("default_cpu_count", 1)
+    mem = data.get("default_memory_mb", 512)
+
+    # Push TTL to orchestrator so it takes effect for new instances immediately
+    try:
+        httpx.patch(
+            f"{ORCHESTRATOR_URL}/settings",
+            json={"default_ttl_seconds": default_ttl},
+            headers=_headers(),
+            timeout=5.0,
+        ).raise_for_status()
+    except Exception as e:
+        return jsonify({"error": f"Failed to update orchestrator: {e}"}), 500
+
+    # Store CPU/memory defaults locally (no orchestrator equivalent)
+    set_config("isolatex_default_ttl_seconds", default_ttl)
+    set_config("isolatex_default_cpu_count", cpu)
+    set_config("isolatex_default_memory_mb", mem)
     return jsonify({"status": "ok"})
 
 

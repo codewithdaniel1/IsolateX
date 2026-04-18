@@ -23,6 +23,14 @@ async def init_db():
         await conn.execute(
             text("ALTER TABLE instances ADD COLUMN IF NOT EXISTS backend_port INTEGER")
         )
+        await conn.execute(
+            text("""
+                CREATE TABLE IF NOT EXISTS orchestrator_settings (
+                    key VARCHAR PRIMARY KEY,
+                    value VARCHAR NOT NULL
+                )
+            """)
+        )
 
 
 async def get_db():
