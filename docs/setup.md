@@ -1,10 +1,47 @@
 # IsolateX Setup Guide
 
-This guide takes you from zero to a working IsolateX deployment — local dev first, then production.
+This guide takes you from zero to a working IsolateX deployment.
 
 ---
 
-## Part 1 — Local dev (Docker only, no Kubernetes)
+## Quickstart — automated setup
+
+The `setup.sh` script installs and configures everything for you. It is safe to re-run — already-installed tools are updated, not reinstalled.
+
+```bash
+# Docker only (local dev — no Kubernetes needed)
+./setup.sh
+
+# Docker + Kubernetes + kCTF
+./setup.sh --kctf
+
+# Docker + Kubernetes + kCTF + Kata Containers (QEMU backend)
+./setup.sh --kata
+
+# Docker + Kubernetes + kCTF + Kata + Firecracker (strongest isolation)
+./setup.sh --kata-fc
+
+# Everything
+./setup.sh --all
+```
+
+**What each flag installs:**
+
+| Flag | Installs | Runtimes unlocked |
+|---|---|---|
+| *(none)* | Docker, Docker Compose | `docker` |
+| `--kctf` | + kubectl, k3s, kCTF namespace | `docker`, `kctf` |
+| `--kata` | + Kata Containers (QEMU) | + `kata` |
+| `--kata-fc` | + Firecracker | + `kata-firecracker` |
+
+After the script finishes:
+1. Go to http://localhost:8000 and complete the CTFd setup wizard
+2. Go to **Admin → Plugins → IsolateX** to configure TTL and resource tiers
+3. Register your challenges (see Part 2 below)
+
+---
+
+## Manual setup — Part 1: Docker only (local dev)
 
 Everything runs in Docker Compose: orchestrator, a Docker worker, CTFd, Postgres, Redis, and Traefik.
 

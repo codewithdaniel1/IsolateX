@@ -45,13 +45,20 @@ Set per-challenge in the admin panel (Plugins → IsolateX):
 
 ---
 
-## Quick start (local dev, 5 minutes)
+## Quick start
 
 ```bash
-git clone https://github.com/osiris/isolatex
-cd isolatex
-docker compose up -d
+git clone https://github.com/codewithdaniel1/IsolateX
+cd IsolateX
+
+# Docker only (local dev)
+./setup.sh
+
+# With Kubernetes + kCTF + Kata + Firecracker
+./setup.sh --all
 ```
+
+The script installs and configures Docker, kubectl, k3s, kCTF, Kata, and Firecracker as needed. Safe to re-run — existing tools are updated, not reinstalled.
 
 Then go to [http://localhost:8000](http://localhost:8000) to set up CTFd.
 

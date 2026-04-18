@@ -21,6 +21,7 @@ from CTFd.utils.user import get_current_team, get_current_user
 from CTFd.utils.decorators import admins_only
 from CTFd.utils import get_config, set_config
 from CTFd.plugins import register_plugin_assets_directory, bypass_csrf_protection, register_admin_plugin_menu_bar
+from CTFd.models import Challenges
 import httpx
 import os
 from pathlib import Path
@@ -210,7 +211,24 @@ def admin_list_challenges():
     try:
         resp = httpx.get(f"{ORCHESTRATOR_URL}/challenges", headers=_headers(), timeout=10.0)
         resp.raise_for_status()
-        return jsonify(resp.json())
+        ix_challenges = resp.json()
+
+        # Build CTFd order map: challenge slug → (category, points, ctfd_id)
+        ctfd_chals = Challenges.query.order_by(
+            Challenges.category, Challenges.value, Challenges.id
+        ).all()
+        # Map by normalized slug (lowercase, spaces→hyphens) matching IsolateX IDs
+        ctfd_order = {}
+        for i, c in enumerate(ctfd_chals):
+            slug = c.name.lower().replace(" ", "-")
+            ctfd_order[slug] = i
+            ctfd_order[c.name] = i  # also index by exact name
+
+        def sort_key(c):
+            return ctfd_order.get(c["id"], ctfd_order.get(c["name"], 9999))
+
+        ix_challenges.sort(key=sort_key)
+        return jsonify(ix_challenges)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
