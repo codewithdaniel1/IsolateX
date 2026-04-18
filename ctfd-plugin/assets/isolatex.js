@@ -19,14 +19,74 @@
   // Bootstrap
   // -------------------------------------------------------------------------
 
-  document.addEventListener("DOMContentLoaded", scanPanels);
+  document.addEventListener("DOMContentLoaded", initObserver);
   document.addEventListener("shown.bs.modal", scanPanels);
+
+  function initObserver() {
+    // Watch for CTFd dynamically injecting challenge content
+    const observer = new MutationObserver(() => {
+      scanPanels();
+      // Auto-inject panel if we're on a challenge page
+      autoInjectPanel();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: false,
+    });
+
+    scanPanels();
+    autoInjectPanel();
+  }
+
+  function autoInjectPanel() {
+    // Look for challenge info in various places CTFd might put it
+
+    // Method 1: Find by challenge title in the header
+    const titleEl = document.querySelector(".challenge-name") || document.querySelector("h1.challenge-name");
+    if (!titleEl) return;
+
+    const cid = titleEl.textContent?.trim().toLowerCase().replace(/\s+/g, "-") || "";
+    if (!cid || document.querySelector(`[data-isolatex-challenge="${cid}"]`)) return;
+
+    // Find insertion point - after challenge info section
+    const infoSection = document.querySelector(".challenge-info") || document.querySelector("[data-challenge-info]");
+    const descSection = document.querySelector(".challenge-description");
+    const insertAfter = descSection || infoSection;
+
+    if (!insertAfter) return;
+
+    // Create and insert panel
+    const panel = document.createElement("div");
+    panel.setAttribute("data-isolatex-challenge", cid);
+    panel.style.marginTop = "1rem";
+    insertAfter.parentNode.insertBefore(panel, insertAfter.nextSibling);
+  }
 
   function scanPanels() {
     document.querySelectorAll("[data-isolatex-challenge]").forEach((el) => {
       if (!el._ixInit) {
         el._ixInit = true;
         initPanel(el);
+      }
+    });
+  }
+
+  function scanDescriptions() {
+    // Look for challenge description elements that contain our marker
+    document.querySelectorAll("[data-description]").forEach((el) => {
+      if (el._ixScanned) return;
+      el._ixScanned = true;
+
+      const desc = el.getAttribute("data-description") || el.textContent;
+      const match = desc.match(/data-isolatex-challenge="([^"]+)"/);
+      if (match) {
+        const cid = match[1];
+        // Create and insert a panel after the description
+        const panel = document.createElement("div");
+        panel.setAttribute("data-isolatex-challenge", cid);
+        el.parentNode.insertBefore(panel, el.nextSibling);
       }
     });
   }

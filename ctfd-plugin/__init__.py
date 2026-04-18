@@ -16,15 +16,19 @@ Config (environment variables or CTFd admin → Plugins → IsolateX):
   ISOLATEX_URL      URL of the IsolateX orchestrator  e.g. http://orchestrator:8080
   ISOLATEX_API_KEY  Shared secret (generate: openssl rand -hex 32)
 """
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, send_file
 from CTFd.utils.decorators import authed_only
 from CTFd.utils.user import get_current_team, get_current_user
 from CTFd.plugins import register_plugin_assets_directory
 import httpx
 import os
+from pathlib import Path
 
 blueprint = Blueprint("isolatex", __name__, template_folder="templates",
                       static_folder="assets", url_prefix="/isolatex")
+
+# Path to assets directory
+ASSETS_DIR = Path(__file__).parent / "assets"
 
 ORCHESTRATOR_URL = os.environ.get("ISOLATEX_URL", "http://orchestrator:8080")
 API_KEY = os.environ.get("ISOLATEX_API_KEY", "")
@@ -35,11 +39,19 @@ def _headers():
 
 
 def _team_id() -> str:
+    """Get unique identifier for current user/team.
+    Priority: team (if in team mode) > user (individual) > admin (if not logged in)
+    """
     team = get_current_team()
     if team:
         return f"team-{team.id}"
+
     user = get_current_user()
-    return f"user-{user.id}"
+    if user:
+        return f"user-{user.id}"
+
+    # Fallback for unauthenticated access (admin testing)
+    return "admin-default"
 
 
 def _get_active_instance(challenge_id: str):
@@ -157,7 +169,29 @@ def renew_instance(challenge_id: str):
         return jsonify({"error": str(e)}), 500
 
 
+@blueprint.route("/assets/<path:filename>")
+def serve_assets(filename):
+    """Serve static assets (JS, CSS, etc)."""
+    try:
+        return send_file(ASSETS_DIR / filename, mimetype="application/javascript" if filename.endswith(".js") else "text/css")
+    except FileNotFoundError:
+        return jsonify({"error": "not found"}), 404
+
+
 def load(app):
     register_plugin_assets_directory(app, base_path="/plugins/isolatex/assets/")
     app.register_blueprint(blueprint)
+
+    # Inject script into every HTML response
+    @app.after_request
+    def inject_isolatex_script(response):
+        if response.content_type and "text/html" in response.content_type:
+            data = response.get_data(as_text=True)
+            script = '<script src="/isolatex/assets/isolatex.js" async></script>'
+            # Insert before closing body tag
+            if '</body>' in data:
+                data = data.replace('</body>', f'{script}</body>')
+                response.set_data(data)
+        return response
+
     print("[IsolateX] plugin loaded")
