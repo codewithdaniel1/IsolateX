@@ -236,7 +236,7 @@
     let persistCls = "text-danger";
     try {
       const data = await apiFetch(`/isolatex/instance/${ctx.cid}/renew`, "POST");
-      persistMsg = `Timer reset — ${Math.round(data.seconds_added / 60)} minutes added.`;
+      persistMsg = "Timer reset.";
       persistCls = "text-success";
     } catch (e) {
       persistMsg = `Renew failed: ${e.message}`;
