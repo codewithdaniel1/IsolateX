@@ -25,6 +25,8 @@ IsolateX gives every team their own isolated challenge environment — players c
 | `kata` | Kubernetes + Kata (QEMU backend) | Strong | Pwn, RCE challenges |
 | `kata-firecracker` | Kubernetes + Kata (Firecracker backend) | Strongest | Kernel pwn, AI code execution |
 
+> **macOS / Windows:** Only `docker` runtime is available locally. `kctf`, `kata`, and `kata-firecracker` require a Linux host with KVM hardware virtualization (VT-x / AMD-V enabled in BIOS).
+
 **Choosing a runtime:**
 - Start with `docker` for local dev — no Kubernetes needed.
 - Use `kctf` for most production challenges.
@@ -36,12 +38,12 @@ IsolateX gives every team their own isolated challenge environment — players c
 
 Set per-challenge in the admin panel (Plugins → IsolateX):
 
-| Tier | CPU | Memory | When to use |
-|---|---|---|---|
-| Tier 1 | 0.5 cores | 256 MB | Static web, trivial challenges |
-| Tier 2 | 1 core | 512 MB | Typical web / reversing |
-| Tier 3 | 2 cores | 1 GB | Pwn, heavier web |
-| Tier 4 | 4 cores | 2 GB | AI, compilation, heavy compute |
+| Tier | CPU | Memory | Runtime | When to use |
+|---|---|---|---|---|
+| Tier 1 | 0.5 cores | 256 MB | Docker | Static web, trivial challenges |
+| Tier 2 | 1 core | 512 MB | kCTF | Typical web / reversing |
+| Tier 3 | 2 cores | 1 GB | Kata | Pwn, heavier web |
+| Tier 4 | 4 cores | 2 GB | Kata-FC | AI, compilation, kernel challenges |
 
 ---
 
@@ -51,18 +53,43 @@ Set per-challenge in the admin panel (Plugins → IsolateX):
 git clone https://github.com/codewithdaniel1/IsolateX
 cd IsolateX
 
-# Docker only (local dev)
+# Docker only (local dev — works on macOS, Windows, Linux)
 ./setup.sh
 
-# With Kubernetes + kCTF + Kata + Firecracker
+# Docker + Kubernetes + kCTF  (Linux only)
+./setup.sh --kctf
+
+# + Kata Containers / QEMU  (Linux + KVM required)
+./setup.sh --kata
+
+# + Kata + Firecracker  (Linux + KVM required)
+./setup.sh --kata-fc
+
+# Everything at once
 ./setup.sh --all
 ```
 
-The script installs and configures Docker, kubectl, k3s, kCTF, Kata, and Firecracker as needed. Safe to re-run — existing tools are updated, not reinstalled.
+The script detects what you already have installed and **updates** it rather than reinstalling. On first run it also generates a `.env` file with random secrets.
 
-Then go to [http://localhost:8000](http://localhost:8000) to set up CTFd.
+After the script finishes:
+1. Go to **http://localhost:8000** and complete the CTFd setup wizard
+2. Go to **Admin → Plugins → IsolateX** to set TTL and resource tiers
+3. Register your challenge images with the orchestrator (see [docs/setup.md](docs/setup.md))
 
-Full walkthrough → [docs/setup.md](docs/setup.md)
+---
+
+## Requirements
+
+| Requirement | Docker runtime | kCTF | Kata | Kata-FC |
+|---|---|---|---|---|
+| Docker Desktop / Docker Engine | ✅ | ✅ | ✅ | ✅ |
+| Linux host | | ✅ | ✅ | ✅ |
+| KVM (VT-x / AMD-V in BIOS) | | | ✅ | ✅ |
+| kubectl + k3s | | ✅ | ✅ | ✅ |
+| Kata Containers | | | ✅ | ✅ |
+| Firecracker | | | | ✅ |
+
+`setup.sh` installs all of these for you.
 
 ---
 
@@ -70,18 +97,20 @@ Full walkthrough → [docs/setup.md](docs/setup.md)
 
 | Doc | Audience |
 |---|---|
-| [docs/setup.md](docs/setup.md) | **Start here** — local dev → production, adding challenges |
+| [docs/setup.md](docs/setup.md) | **Start here** — automated setup, adding challenges, troubleshooting |
 | [docs/architecture.md](docs/architecture.md) | How the pieces fit together |
 | [docs/api-reference.md](docs/api-reference.md) | Orchestrator REST API |
 | [docs/security-model.md](docs/security-model.md) | Isolation model and threat model |
-| [docs/kctf-setup.md](docs/kctf-setup.md) | *(Operators)* Kubernetes / kCTF cluster setup |
-| [docs/kata-setup.md](docs/kata-setup.md) | *(Operators)* Kata Containers setup |
+| [docs/kctf-setup.md](docs/kctf-setup.md) | *(Operators)* Kubernetes / kCTF cluster setup details |
+| [docs/kata-setup.md](docs/kata-setup.md) | *(Operators)* Kata Containers setup details |
 
 ---
 
 ## Project layout
 
 ```
+setup.sh              Automated install/update script (Docker, k3s, kCTF, Kata, Firecracker)
+
 orchestrator/         FastAPI backend
   api/                REST endpoints: instances, challenges, workers
   core/               TTL reaper, worker scheduler, flag derivation, routing

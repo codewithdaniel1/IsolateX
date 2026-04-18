@@ -6,19 +6,22 @@ This guide takes you from zero to a working IsolateX deployment.
 
 ## Quickstart — automated setup
 
-The `setup.sh` script installs and configures everything for you. It is safe to re-run — already-installed tools are updated, not reinstalled.
+The `setup.sh` script installs and configures everything for you. It is safe to re-run — existing tools are updated, not reinstalled.
 
 ```bash
-# Docker only (local dev — no Kubernetes needed)
+git clone https://github.com/codewithdaniel1/IsolateX
+cd IsolateX
+
+# Docker only — works on macOS, Windows (WSL2), and Linux
 ./setup.sh
 
-# Docker + Kubernetes + kCTF
+# Docker + Kubernetes + kCTF  (Linux only)
 ./setup.sh --kctf
 
-# Docker + Kubernetes + kCTF + Kata Containers (QEMU backend)
+# + Kata Containers with QEMU backend  (Linux + KVM required)
 ./setup.sh --kata
 
-# Docker + Kubernetes + kCTF + Kata + Firecracker (strongest isolation)
+# + Kata with Firecracker backend  (Linux + KVM required)
 ./setup.sh --kata-fc
 
 # Everything
@@ -27,17 +30,21 @@ The `setup.sh` script installs and configures everything for you. It is safe to 
 
 **What each flag installs:**
 
-| Flag | Installs | Runtimes unlocked |
+| Flag | Tools installed | Runtimes unlocked |
 |---|---|---|
 | *(none)* | Docker, Docker Compose | `docker` |
-| `--kctf` | + kubectl, k3s, kCTF namespace | `docker`, `kctf` |
-| `--kata` | + Kata Containers (QEMU) | + `kata` |
-| `--kata-fc` | + Firecracker | + `kata-firecracker` |
+| `--kctf` | + kubectl, k3s, kCTF namespace + NetworkPolicy | `docker`, `kctf` |
+| `--kata` | + Kata Containers (QEMU backend), `kata` RuntimeClass | + `kata` |
+| `--kata-fc` | + Firecracker, `kata-firecracker` RuntimeClass | + `kata-firecracker` |
+
+> **macOS / Windows:** Only `docker` runtime works locally. Kubernetes-based runtimes (`kctf`, `kata`, `kata-firecracker`) require a **Linux host** with **KVM hardware virtualization** enabled (VT-x for Intel, AMD-V for AMD — enable in BIOS). For production, use a Linux server or cloud VM (AWS, GCP, DigitalOcean, Hetzner).
 
 After the script finishes:
-1. Go to http://localhost:8000 and complete the CTFd setup wizard
+1. Go to **http://localhost:8000** and complete the CTFd setup wizard
 2. Go to **Admin → Plugins → IsolateX** to configure TTL and resource tiers
 3. Register your challenges (see Part 2 below)
+
+On first run, `setup.sh` generates a `.env` file with random secrets. Keep this file — it contains your `API_KEY` and `FLAG_HMAC_SECRET`.
 
 ---
 

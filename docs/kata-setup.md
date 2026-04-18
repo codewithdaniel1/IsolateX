@@ -1,7 +1,10 @@
 # Kata Containers Setup Guide
 
-> **Operator guide** — This document is for infrastructure operators setting up Kata Containers on the cluster.
-> CTF organizers adding challenges do not need this — see [setup.md](setup.md) instead.
+> **Operator guide** — This document is for infrastructure operators setting up Kata Containers manually.
+> For most users, run `./setup.sh --kata` (QEMU backend) or `./setup.sh --kata-fc` (Firecracker backend) instead — it handles everything on this page automatically.
+> See [setup.md](setup.md) for the full quickstart.
+>
+> **Requirements:** Linux host with KVM hardware virtualization enabled (VT-x for Intel, AMD-V for AMD — set in BIOS). Not available on macOS or Windows without a Linux VM. Firecracker additionally requires `/dev/kvm` to be accessible.
 
 Kata Containers runs your Kubernetes pods inside lightweight VMs instead of sharing the host kernel.
 This gives you stronger isolation while keeping the Kubernetes operational model.

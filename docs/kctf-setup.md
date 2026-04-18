@@ -1,7 +1,10 @@
 # kCTF Setup Guide
 
-> **Operator guide** — This document is for infrastructure operators setting up the Kubernetes cluster.
-> CTF organizers adding challenges do not need this — see [setup.md](setup.md) instead.
+> **Operator guide** — This document is for infrastructure operators setting up the Kubernetes cluster manually.
+> For most users, run `./setup.sh --kctf` instead — it handles everything on this page automatically.
+> See [setup.md](setup.md) for the full quickstart.
+>
+> **Requirements:** Linux host with KVM enabled (VT-x / AMD-V in BIOS). Not available on macOS or Windows without a Linux VM.
 
 kCTF is Google's CTF infrastructure framework. It uses Kubernetes with nsjail
 (namespace-based sandboxing) inside each pod for challenge isolation.
