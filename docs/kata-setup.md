@@ -1,5 +1,8 @@
 # Kata Containers Setup Guide
 
+> **Operator guide** — This document is for infrastructure operators setting up Kata Containers on the cluster.
+> CTF organizers adding challenges do not need this — see [setup.md](setup.md) instead.
+
 Kata Containers runs your Kubernetes pods inside lightweight VMs instead of sharing the host kernel.
 This gives you stronger isolation while keeping the Kubernetes operational model.
 

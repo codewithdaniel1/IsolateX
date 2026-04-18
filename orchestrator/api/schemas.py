@@ -51,7 +51,7 @@ class ChallengeCreate(BaseModel):
     name: str
     runtime: RuntimeType
     image: Optional[str] = None
-    cpu_count: int = 1
+    cpu_count: float = 1.0
     memory_mb: int = 512
     port: int = 8888
     # Optional TTL override in seconds. If omitted, global default (1800s) is used.
@@ -65,13 +65,21 @@ class ChallengeResponse(BaseModel):
     id: str
     name: str
     runtime: RuntimeType
-    cpu_count: int
+    cpu_count: float
     memory_mb: int
     port: int
     ttl_seconds: Optional[int] = None
 
     class Config:
         from_attributes = True
+
+
+class ChallengeUpdate(BaseModel):
+    name: Optional[str] = None
+    cpu_count: Optional[float] = None
+    memory_mb: Optional[int] = None
+    ttl_seconds: Optional[int] = None
+    extra_config: Optional[str] = None
 
 
 class RenewResponse(BaseModel):

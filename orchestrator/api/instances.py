@@ -145,10 +145,8 @@ async def renew_instance(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Extend the TTL of a running instance.
-
-    Adds the challenge's ttl_seconds to the current expires_at,
-    but never past MAX_TTL_SECONDS (2 hours) from right now.
+    Reset the TTL of a running instance back to its original duration from now.
+    Cannot extend past the original started_at + ttl hard cap.
     """
     inst = await _fetch(db, instance_id)
     if not inst:
@@ -159,15 +157,16 @@ async def renew_instance(
     challenge = await _get_challenge(db, inst.challenge_id)
     ttl = _effective_ttl(challenge)
     now = datetime.now(timezone.utc)
-    hard_cap = now + timedelta(seconds=settings.max_ttl_seconds)
+    # Hard cap: never go past when it would have expired if renewed at launch
+    hard_cap = inst.started_at + timedelta(seconds=ttl)
 
-    # Extend by ttl from current expires_at, capped at hard_cap
-    proposed = inst.expires_at + timedelta(seconds=ttl)
+    # Reset expiry to now + ttl, but never past hard_cap
+    proposed = now + timedelta(seconds=ttl)
     new_expires = min(proposed, hard_cap)
 
     if new_expires <= inst.expires_at:
         raise HTTPException(status_code=409,
-                            detail="instance is already at the maximum allowed time (2 hours)")
+                            detail="instance is already at the maximum allowed time")
 
     seconds_added = int((new_expires - inst.expires_at).total_seconds())
     inst.expires_at = new_expires
@@ -260,7 +259,11 @@ async def _launch_on_worker(inst: Instance, challenge: Challenge, worker: Worker
             record = result.scalar_one()
             record.status = InstanceStatus.running
             record.backend_port = data["port"]
-            record.endpoint = f"https://{endpoint}" if settings.tls_enabled else f"http://{endpoint}"
+            # For local dev (base_domain == "localhost"), skip Traefik subdomain and use direct port
+            if settings.base_domain == "localhost":
+                record.endpoint = f"http://localhost:{data['port']}"
+            else:
+                record.endpoint = f"https://{endpoint}" if settings.tls_enabled else f"http://{endpoint}"
             await db.commit()
         log.info("instance running", instance_id=str(inst.id), endpoint=endpoint)
     except Exception as e:

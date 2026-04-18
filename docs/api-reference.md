@@ -1,11 +1,13 @@
 # IsolateX API Reference
 
-Base URL: `http://orchestrator:8080`
+Base URL: `http://orchestrator:8080` (local dev: `http://localhost:8080`)
 
-All endpoints require the header:
+All endpoints require:
 ```
 x-api-key: <your API key>
 ```
+
+Interactive docs (Swagger UI): `http://localhost:8080/docs`
 
 ---
 
@@ -18,18 +20,19 @@ POST /instances
 ```json
 { "team_id": "team-42", "challenge_id": "web100" }
 ```
-Returns `201` with the instance object. Returns `409` if this team already has a running instance for this challenge.
-
-### Get instance by ID
-```
-GET /instances/{instance_id}
-```
+Returns `201` with the instance object.  
+Returns `409` if this team already has a running instance for this challenge.
 
 ### Get active instance for a team
 ```
 GET /instances/team/{team_id}/{challenge_id}
 ```
-Returns `404` if no active instance exists.
+Returns the active (pending or running) instance, or `404` if none exists.
+
+### Get instance by ID
+```
+GET /instances/{instance_id}
+```
 
 ### Stop instance
 ```
@@ -41,24 +44,24 @@ Returns `204`. Destroys the instance and deregisters the gateway route.
 ```
 POST /instances/{instance_id}/restart
 ```
-Destroys the current instance and launches a new one for the same team + challenge. **TTL resets to the full challenge default.**
-
+Destroys the current instance and launches a new one for the same team + challenge.  
+TTL resets to the full challenge default.  
 Returns the new instance object.
 
 ### Renew instance TTL
 ```
 POST /instances/{instance_id}/renew
 ```
-Extends the TTL by the challenge's `ttl_seconds`. Never extends past **2 hours from the current time**.
+Resets the TTL back to the original duration from now, capped at `started_at + ttl_seconds`.  
+Returns `409` if the instance is already at the cap (nothing to renew).
 
 Returns:
 ```json
 {
   "expires_at": "2026-04-17T20:00:00Z",
-  "seconds_added": 1800
+  "seconds_added": 900
 }
 ```
-Returns `409` if the instance is already at the 2-hour cap.
 
 ---
 
@@ -69,9 +72,9 @@ Returns `409` if the instance is already at the 2-hour cap.
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "team_id": "team-42",
   "challenge_id": "web100",
-  "runtime": "kata",
+  "runtime": "docker",
   "status": "running",
-  "endpoint": "https://ab12cd34.web100.ctf.osiris.sh",
+  "endpoint": "http://localhost:34512",
   "flag": "flag{...}",
   "expires_at": "2026-04-17T19:30:00Z",
   "started_at": "2026-04-17T19:00:00Z",
@@ -80,6 +83,10 @@ Returns `409` if the instance is already at the 2-hour cap.
 ```
 
 **Status values:** `pending` → `running` → `destroyed` / `expired` / `error`
+
+**Endpoint format:**
+- Local dev (`BASE_DOMAIN=localhost`): `http://localhost:<host_port>`
+- Production: `https://<prefix>.<challenge-id>.<base-domain>`
 
 ---
 
@@ -93,19 +100,50 @@ POST /challenges
 {
   "id": "web100",
   "name": "Web 100",
-  "runtime": "kata",
-  "image": "ghcr.io/osiris/web100:latest",
-  "port": 8080,
+  "runtime": "docker",
+  "image": "myctf-web100:latest",
+  "port": 80,
   "cpu_count": 1,
-  "memory_mb": 256,
-  "ttl_seconds": 3600,
-  "flag_salt": "<openssl rand -hex 16>"
+  "memory_mb": 512,
+  "ttl_seconds": 3600
 }
 ```
 
-`ttl_seconds` is optional. Omitting it uses the global default (1800s = 30 min).
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `id` | Yes | — | Unique slug, must match CTFd challenge slug |
+| `name` | Yes | — | Display name |
+| `runtime` | Yes | — | `docker`, `kctf`, `kata`, or `kata-firecracker` |
+| `image` | Yes | — | Docker image to run |
+| `port` | Yes | — | Port the app listens on inside the container |
+| `cpu_count` | No | 1 | CPU cores (0.5, 1, 2, 4) |
+| `memory_mb` | No | 512 | Memory in MB (256, 512, 1024, 2048) |
+| `ttl_seconds` | No | global default | Instance lifetime; null = use global default |
+| `extra_config` | No | — | JSON string for adapter-specific options |
 
-**Runtimes:** `docker` | `kctf` | `kata` | `kata-firecracker`
+**Runtimes:**
+
+| Value | Description |
+|---|---|
+| `docker` | Standard Docker container (local dev, easy challenges) |
+| `kctf` | Kubernetes pod + nsjail (medium isolation) |
+| `kata` | Kubernetes + Kata Containers with QEMU backend (strong isolation) |
+| `kata-firecracker` | Kubernetes + Kata Containers with Firecracker backend (strongest isolation) |
+
+### Update challenge settings
+```
+PATCH /challenges/{challenge_id}
+```
+Updates one or more fields without replacing the whole record. Used by the admin UI.
+
+```json
+{
+  "ttl_seconds": 3600,
+  "cpu_count": 2,
+  "memory_mb": 1024
+}
+```
+All fields are optional. Only the provided fields are updated.
 
 ### List challenges
 ```
@@ -130,17 +168,20 @@ DELETE /challenges/{challenge_id}
 ```
 GET /workers
 ```
+Returns all registered workers and their status (active if last heartbeat < 60s ago).
 
-### Register worker (called by worker agent on startup)
+### Register worker
 ```
 POST /workers
 ```
+Called automatically by the worker agent on startup.
+
 ```json
 {
-  "id": "worker-kata-01",
-  "address": "10.0.1.5",
+  "id": "worker-docker-01",
+  "address": "host.docker.internal",
   "agent_port": 9090,
-  "runtime": "kata",
+  "runtime": "docker",
   "max_instances": 50
 }
 ```
@@ -149,6 +190,7 @@ POST /workers
 ```
 POST /workers/{worker_id}/heartbeat
 ```
+Called automatically by the worker agent every 30s.
 
 ---
 
@@ -157,4 +199,13 @@ POST /workers/{worker_id}/heartbeat
 ```
 GET /traefik/config
 ```
-Returns dynamic route config for Traefik HTTP provider polling. Not for direct use.
+Returns dynamic route config for Traefik's HTTP provider. Traefik polls this every 5 seconds. Not for direct use.
+
+---
+
+## Health check
+
+```
+GET /health
+```
+Returns `{"status": "ok"}` when the orchestrator is up.

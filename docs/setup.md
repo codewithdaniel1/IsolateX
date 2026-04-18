@@ -1,28 +1,14 @@
 # IsolateX Setup Guide
 
-This guide takes you from zero to a working IsolateX deployment.
+This guide takes you from zero to a working IsolateX deployment — local dev first, then production.
 
 ---
 
-## Prerequisites
+## Part 1 — Local dev (Docker only, no Kubernetes)
 
-Before you start, decide which runtimes you need:
+Everything runs in Docker Compose: orchestrator, a Docker worker, CTFd, Postgres, Redis, and Traefik.
 
-| Runtime | Requires |
-|---|---|
-| `docker` | Docker on the worker host |
-| `kctf` | Kubernetes cluster |
-| `kata` | Kubernetes + Kata Containers installed |
-| `kata-firecracker` | Kubernetes + Kata Containers configured with Firecracker backend |
-
-For local dev, `docker` runtime works out of the box with Docker Compose.
-For production, you need a Kubernetes cluster. See [kctf-setup.md](kctf-setup.md).
-
----
-
-## Local dev (5 minutes)
-
-Everything runs in Docker Compose: orchestrator, a Docker worker, CTFd, Postgres, Redis, Traefik.
+### Step 1 — Start the stack
 
 ```bash
 git clone https://github.com/osiris/isolatex
@@ -30,215 +16,281 @@ cd isolatex
 docker compose up -d
 ```
 
-Services:
-- CTFd: http://localhost:8000
-- Orchestrator API: http://localhost:8080/docs
+Services after startup:
+- **CTFd**: http://localhost:8000
+- **Orchestrator API**: http://localhost:8080/docs
 
-The CTFd plugin is already mounted. No extra install step needed.
+### Step 2 — Set up CTFd
 
-### Register a test challenge
+1. Go to http://localhost:8000 and complete the CTFd setup wizard (name, admin account).
+2. The IsolateX plugin is already installed — you will see **IsolateX** in the admin navbar under Plugins.
+
+### Step 3 — Add your challenges to CTFd
+
+In CTFd (Admin → Challenges → New Challenge), create a challenge as usual. Set:
+- **Title**, **Category**, **Description**, **Points** as normal
+- The description can be anything — IsolateX auto-injects the instance panel
+
+You do not need to put anything special in the description. IsolateX detects challenges by their ID.
+
+### Step 4 — Register challenges with the IsolateX orchestrator
+
+For each challenge that needs a live instance, register it with the orchestrator:
 
 ```bash
 curl -X POST http://localhost:8080/challenges \
   -H "x-api-key: dev-api-key-change-in-prod" \
   -H "content-type: application/json" \
   -d '{
-    "id": "web-easy",
-    "name": "Easy Web",
+    "id": "my-challenge",
+    "name": "My Challenge",
     "runtime": "docker",
-    "image": "nginx:alpine",
+    "image": "my-challenge-image:latest",
     "port": 80
   }'
 ```
 
-### Launch an instance (test)
+**The `id` must exactly match the challenge's slug in CTFd** (lowercase, hyphens instead of spaces — e.g. challenge titled "Command Injection" → id `command-injection`).
+
+Fields:
+| Field | Required | Description |
+|---|---|---|
+| `id` | Yes | Slug matching CTFd challenge |
+| `name` | Yes | Display name |
+| `runtime` | Yes | `docker`, `kctf`, `kata`, or `kata-firecracker` |
+| `image` | Yes | Docker image to run |
+| `port` | Yes | Port the challenge listens on inside the container |
+| `cpu_count` | No | CPU cores (default: 1) |
+| `memory_mb` | No | Memory in MB (default: 512) |
+| `ttl_seconds` | No | Instance lifetime in seconds (default: global default) |
+
+### Step 5 — Build and load your challenge images
+
+Your challenge Docker image must be accessible to the worker. For local dev:
 
 ```bash
-curl -X POST http://localhost:8080/instances \
-  -H "x-api-key: dev-api-key-change-in-prod" \
-  -H "content-type: application/json" \
-  -d '{"team_id": "team-1", "challenge_id": "web-easy"}'
+# Build your challenge image
+docker build -t my-challenge:latest ./challenges/my-challenge/
+
+# The worker container shares the host Docker socket, so the image is immediately available
+```
+
+### Step 6 — Configure settings in the admin UI
+
+Go to **CTFd Admin → Plugins → IsolateX**:
+
+- **Global TTL** — how long each instance runs before auto-stopping (default: 30 min)
+- **Max TTL** — players cannot Renew past this duration from launch time (default: 60 min)
+- **Per-challenge CPU tier** — 0.5 / 1 / 2 / 4 cores
+- **Per-challenge Memory tier** — 256 MB / 512 MB / 1 GB / 2 GB
+
+Changes to TTL and resources take effect on the next launched instance. Running instances are not affected.
+
+### Step 7 — Test it
+
+1. Log in as a player (or in a private/incognito window).
+2. Open a challenge that is registered with the orchestrator.
+3. The **⚡ Live Instance** panel appears automatically.
+4. Click **Launch** — the instance starts, you get an endpoint URL and countdown timer.
+5. Click the link — it opens your challenge in a new tab.
+6. Test **Restart**, **Renew**, and **Stop**.
+
+---
+
+## Part 2 — Adding your own CTF challenges
+
+### Challenge image requirements
+
+Your challenge Docker image must:
+1. Run as a non-root user where possible
+2. Listen on a single port (the `port` field in the orchestrator registration)
+3. Accept the flag via the `ISOLATEX_FLAG` environment variable (IsolateX injects this automatically)
+
+Example minimal Dockerfile for a Flask web challenge:
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+RUN useradd -m ctf && chown -R ctf:ctf /app
+USER ctf
+ENV PORT=8080
+EXPOSE 8080
+CMD ["python", "app.py"]
+```
+
+In your app, read the flag from the environment:
+```python
+import os
+FLAG = os.environ.get("ISOLATEX_FLAG", "flag{placeholder}")
+```
+
+### Choosing a runtime
+
+| Challenge type | Recommended runtime |
+|---|---|
+| Static web (no shell) | `docker` |
+| Web with server-side code | `docker` or `kctf` |
+| Reversing, crypto | `docker` or `kctf` |
+| Binary exploitation (pwn) | `kata` or `kata-firecracker` |
+| RCE / arbitrary code execution | `kata-firecracker` |
+| Kernel challenges | `kata-firecracker` |
+
+### Choosing resource tiers
+
+| Tier | CPU | Memory | Use case |
+|---|---|---|---|
+| 1 | 0.5 cores | 256 MB | Static sites, trivial challenges |
+| 2 | 1 core | 512 MB | Typical web / reversing |
+| 3 | 2 cores | 1 GB | Pwn, heavier services |
+| 4 | 4 cores | 2 GB | AI, compilation, heavy compute |
+
+You can set these per-challenge in **Admin → Plugins → IsolateX** after registration.
+
+### Bulk importing challenges
+
+If you have many challenges, register them in a loop:
+
+```bash
+#!/bin/bash
+API_KEY="dev-api-key-change-in-prod"
+ORCH="http://localhost:8080"
+
+register() {
+  local id=$1 name=$2 image=$3 port=$4 runtime=${5:-docker}
+  curl -s -X POST "$ORCH/challenges" \
+    -H "x-api-key: $API_KEY" \
+    -H "content-type: application/json" \
+    -d "{\"id\":\"$id\",\"name\":\"$name\",\"runtime\":\"$runtime\",\"image\":\"$image\",\"port\":$port}"
+}
+
+register "cmdinj"     "Command Injection"  "myctf-cmdinj:latest"    80
+register "sqlinj"     "SQL Injection"      "myctf-sqlinj:latest"    80
+register "bof"        "Buffer Overflow"    "myctf-bof:latest"      8888 kata
 ```
 
 ---
 
-## Production deployment
+## Part 3 — Production deployment
 
-### 1. Set environment variables
-
-Copy `.env.example` to `.env` and fill in:
+### 1. Generate secrets
 
 ```bash
-# Required — generate these before deploying
-API_KEY=<openssl rand -hex 32>
-FLAG_HMAC_SECRET=<openssl rand -hex 32>
-
-# Database
-DATABASE_URL=postgresql+asyncpg://isolatex:<password>@postgres:5432/isolatex
-
-# Redis
-REDIS_URL=redis://redis:6379/0
-
-# Gateway
-BASE_DOMAIN=ctf.yourdomain.com
-TLS_ENABLED=true
-
-# TTL defaults
-DEFAULT_TTL_SECONDS=1800   # 30 min global default
-MAX_TTL_SECONDS=7200       # 2 hour hard cap on renew
-
-# CTFd integration
-CTFD_URL=http://ctfd:8000
+API_KEY=$(openssl rand -hex 32)
+FLAG_HMAC_SECRET=$(openssl rand -hex 32)
+echo "API_KEY=$API_KEY"
+echo "FLAG_HMAC_SECRET=$FLAG_HMAC_SECRET"
 ```
 
-**Never use the default dev API key in production.**
+**Never use the default dev keys in production.**
 
-### 2. Deploy the orchestrator
+### 2. Set environment variables
 
-The orchestrator is stateless — you can run 2 replicas safely.
+In `docker-compose.yml` or your deployment config, set:
+
+```bash
+# Orchestrator
+API_KEY=<generated above>
+FLAG_HMAC_SECRET=<generated above>
+DATABASE_URL=postgresql+asyncpg://isolatex:<password>@postgres:5432/isolatex
+REDIS_URL=redis://redis:6379/0
+BASE_DOMAIN=ctf.yourdomain.com
+TLS_ENABLED=true
+DEFAULT_TTL_SECONDS=1800    # 30 min default, override per-challenge in admin UI
+MAX_TTL_SECONDS=3600        # 1 hour renew cap
+
+# CTFd plugin
+ISOLATEX_URL=http://orchestrator:8080
+ISOLATEX_API_KEY=<same API_KEY>
+```
+
+### 3. Deploy the orchestrator
 
 ```bash
 kubectl create namespace isolatex
 
 kubectl create secret generic orchestrator-secrets \
   --namespace isolatex \
-  --from-literal=database-url="$DATABASE_URL" \
-  --from-literal=redis-url="$REDIS_URL" \
   --from-literal=api-key="$API_KEY" \
-  --from-literal=flag-secret="$FLAG_HMAC_SECRET"
+  --from-literal=flag-secret="$FLAG_HMAC_SECRET" \
+  --from-literal=database-url="$DATABASE_URL" \
+  --from-literal=redis-url="$REDIS_URL"
 
 kubectl apply -f infra/kctf/manifests/
 ```
 
-### 3. Deploy workers
+### 4. Deploy workers
 
-Each worker runs on the compute hosts and talks to the Kubernetes API.
+For Kubernetes-based runtimes, workers run as pods on cluster nodes. See [kctf-setup.md](kctf-setup.md) for cluster setup.
 
-**kctf / kata / kata-firecracker worker:**
-```bash
-RUNTIME=kata \
-KUBECONFIG=/etc/rancher/k3s/k3s.yaml \
-KCTF_NAMESPACE=kctf \
-ORCHESTRATOR_URL=http://orchestrator.isolatex:8080 \
-ORCHESTRATOR_API_KEY=$API_KEY \
-uvicorn worker.main:app --host 0.0.0.0 --port 9090
-```
-
-**docker worker:**
+For Docker runtime (no Kubernetes needed):
 ```bash
 RUNTIME=docker \
-ORCHESTRATOR_URL=http://orchestrator.isolatex:8080 \
+ORCHESTRATOR_URL=http://orchestrator:8080 \
 ORCHESTRATOR_API_KEY=$API_KEY \
-uvicorn worker.main:app --host 0.0.0.0 --port 9090
+WORKER_ADVERTISE_ADDRESS=<worker-host-ip> \
+uvicorn main:app --host 0.0.0.0 --port 9090
 ```
 
-### 4. Install the CTFd plugin
+### 5. Install the CTFd plugin
 
 ```bash
 cp -r ctfd-plugin/ <CTFd>/CTFd/plugins/isolatex/
+pip install httpx
 ```
 
-Set these environment variables in your CTFd deployment:
+Set in your CTFd environment:
 ```
 ISOLATEX_URL=http://orchestrator:8080
-ISOLATEX_API_KEY=<same API_KEY as above>
+ISOLATEX_API_KEY=<API_KEY>
 ```
 
-Restart CTFd. The plugin loads automatically.
+Restart CTFd. You will see **[IsolateX] plugin loaded** in the CTFd logs.
 
-### 5. Deploy the gateway
+### 6. Configure the gateway
+
+For production, Traefik handles per-instance routing. Edit `gateway/traefik/traefik.yml` with your domain, then:
 
 ```bash
 kubectl apply -f gateway/traefik/
 ```
 
-Edit `gateway/traefik/dynamic.yml` to set your domain.
+Each instance gets a subdomain: `<instance-prefix>.<challenge-id>.<base-domain>`  
+e.g. `ab12cd34.web100.ctf.yourdomain.com`
 
-### 6. Register challenges
-
-```bash
-# kctf challenge (medium isolation)
-curl -X POST http://orchestrator:8080/challenges \
-  -H "x-api-key: $API_KEY" \
-  -H "content-type: application/json" \
-  -d '{
-    "id": "web100",
-    "name": "Web 100",
-    "runtime": "kctf",
-    "image": "ghcr.io/osiris/web100:latest",
-    "port": 8080,
-    "memory_mb": 256,
-    "cpu_count": 1,
-    "ttl_seconds": 3600
-  }'
-
-# kata-firecracker challenge (strongest isolation, e.g. pwn)
-curl -X POST http://orchestrator:8080/challenges \
-  -H "x-api-key: $API_KEY" \
-  -H "content-type: application/json" \
-  -d '{
-    "id": "pwn100",
-    "name": "Pwn 100",
-    "runtime": "kata-firecracker",
-    "image": "ghcr.io/osiris/pwn100:latest",
-    "port": 8888,
-    "memory_mb": 512,
-    "cpu_count": 2,
-    "ttl_seconds": 7200
-  }'
-```
-
-`ttl_seconds` is optional. If omitted, the global default (30 min) is used.
-
----
-
-## Adding IsolateX to a challenge in CTFd
-
-In the challenge description, add:
-
-```html
-<div data-isolatex-challenge="{{ challenge.id }}"></div>
-```
-
-IsolateX renders the Launch / Stop / Restart / Renew panel automatically.
-
----
-
-## Verify everything is working
-
-```bash
-# Check worker health
-curl http://worker:9090/health
-
-# List registered workers
-curl http://orchestrator:8080/workers -H "x-api-key: $API_KEY"
-
-# Check orchestrator logs
-kubectl logs -n isolatex -f deployment/orchestrator
-```
+For local dev, the endpoint is `http://localhost:<port>` directly.
 
 ---
 
 ## Troubleshooting
 
 **Instance stuck in "pending"**
-- Check worker logs: `curl http://worker:9090/health`
+- Check worker logs — the image may not be reachable from the worker
 - Check orchestrator logs for launch errors
-- Make sure the challenge image is accessible from the worker
+- Make sure the worker is registered: `GET /workers`
 
 **"No available worker for this runtime"**
-- The worker for that runtime may not be registered or may be unhealthy
-- Check: `curl http://orchestrator:8080/workers -H "x-api-key: $API_KEY"`
+- The worker for that runtime is not registered or is unhealthy
+- Check: `curl http://localhost:8080/workers -H "x-api-key: $API_KEY"`
 
-**Kata pods won't start**
-- Make sure the RuntimeClass exists: `kubectl get runtimeclass`
-- See [kata-setup.md](kata-setup.md)
+**Link does not work (connection refused)**
+- For Docker runtime: make sure the `isolatex_challenges` network is not set to `internal: true`
+- Check that the container is actually running: `docker ps --filter "name=isolatex_"`
+- Exec into the container and check the app is listening: `docker exec <name> curl localhost:<port>`
 
-**CTFd plugin not showing**
-- Make sure the plugin folder is in `CTFd/plugins/isolatex/`
-- Check that `ISOLATEX_URL` and `ISOLATEX_API_KEY` are set
-- Check CTFd logs for plugin load errors
+**Live Instance panel not showing**
+- The IsolateX plugin is mounted and CTFd restarted? Check CTFd logs for `[IsolateX] plugin loaded`
+- The challenge ID must be registered in the orchestrator — IDs are case-sensitive
+- Open browser devtools → Console for JS errors
 
-**Timer not showing in CTFd**
-- Make sure `isolatex.js` is loaded (check browser console)
-- Make sure the challenge description has the `data-isolatex-challenge` div
+**Buttons (Restart/Renew/Stop) not working**
+- Open browser devtools → Network tab → click the button → check the response
+- Make sure you are logged in to CTFd (the plugin uses your session)
+
+**Renew button says "already at maximum"**
+- Renew resets TTL to the original duration from *now*, capped at `started_at + ttl`. If the instance was launched recently and the TTL hasn't dropped much, there is nothing to renew.
+
+**CTFd plugin not loading**
+- Make sure `httpx` is installed in the CTFd container: `pip install httpx`
+- Check that `ISOLATEX_URL` and `ISOLATEX_API_KEY` environment variables are set

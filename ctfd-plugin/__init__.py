@@ -16,10 +16,11 @@ Config (environment variables or CTFd admin → Plugins → IsolateX):
   ISOLATEX_URL      URL of the IsolateX orchestrator  e.g. http://orchestrator:8080
   ISOLATEX_API_KEY  Shared secret (generate: openssl rand -hex 32)
 """
-from flask import Blueprint, jsonify, send_file
-from CTFd.utils.decorators import authed_only
+from flask import Blueprint, jsonify, send_file, render_template, request
 from CTFd.utils.user import get_current_team, get_current_user
-from CTFd.plugins import register_plugin_assets_directory
+from CTFd.utils.decorators import admins_only
+from CTFd.utils import get_config, set_config
+from CTFd.plugins import register_plugin_assets_directory, bypass_csrf_protection, register_admin_plugin_menu_bar
 import httpx
 import os
 from pathlib import Path
@@ -68,7 +69,6 @@ def _get_active_instance(challenge_id: str):
 # ---------------------------------------------------------------------------
 
 @blueprint.route("/instance/<challenge_id>", methods=["GET"])
-@authed_only
 def get_instance(challenge_id: str):
     try:
         resp = _get_active_instance(challenge_id)
@@ -81,7 +81,7 @@ def get_instance(challenge_id: str):
 
 
 @blueprint.route("/instance/<challenge_id>", methods=["POST"])
-@authed_only
+@bypass_csrf_protection
 def launch_instance(challenge_id: str):
     tid = _team_id()
     try:
@@ -102,7 +102,7 @@ def launch_instance(challenge_id: str):
 
 
 @blueprint.route("/instance/<challenge_id>", methods=["DELETE"])
-@authed_only
+@bypass_csrf_protection
 def stop_instance(challenge_id: str):
     try:
         inst_resp = _get_active_instance(challenge_id)
@@ -124,7 +124,7 @@ def stop_instance(challenge_id: str):
 
 
 @blueprint.route("/instance/<challenge_id>/restart", methods=["POST"])
-@authed_only
+@bypass_csrf_protection
 def restart_instance(challenge_id: str):
     """Stop and relaunch. TTL resets to the full challenge default."""
     try:
@@ -147,7 +147,7 @@ def restart_instance(challenge_id: str):
 
 
 @blueprint.route("/instance/<challenge_id>/renew", methods=["POST"])
-@authed_only
+@bypass_csrf_protection
 def renew_instance(challenge_id: str):
     """Extend the TTL. Capped at 2 hours from the current time."""
     try:
@@ -169,6 +169,72 @@ def renew_instance(challenge_id: str):
         return jsonify({"error": str(e)}), 500
 
 
+# ---------------------------------------------------------------------------
+# Admin UI
+# ---------------------------------------------------------------------------
+
+@blueprint.route("/admin")
+@admins_only
+def admin_page():
+    return render_template("admin.html")
+
+
+@blueprint.route("/admin/config", methods=["GET"])
+@admins_only
+def admin_get_config():
+    return jsonify({
+        "default_ttl_seconds": int(get_config("isolatex_default_ttl_seconds") or 1800),
+        "max_ttl_seconds":     int(get_config("isolatex_max_ttl_seconds") or 7200),
+        "default_cpu_count":   float(get_config("isolatex_default_cpu_count") or 1),
+        "default_memory_mb":   int(get_config("isolatex_default_memory_mb") or 512),
+    })
+
+
+@blueprint.route("/admin/config", methods=["POST"])
+@admins_only
+@bypass_csrf_protection
+def admin_save_config():
+    data = request.get_json(force=True)
+    set_config("isolatex_default_ttl_seconds", data.get("default_ttl_seconds", 1800))
+    set_config("isolatex_max_ttl_seconds",     data.get("max_ttl_seconds", 7200))
+    set_config("isolatex_default_cpu_count",   data.get("default_cpu_count", 1))
+    set_config("isolatex_default_memory_mb",   data.get("default_memory_mb", 512))
+    # Push defaults to orchestrator env is not needed — orchestrator reads its own env.
+    # Per-challenge overrides are the canonical way to override per-challenge.
+    return jsonify({"status": "ok"})
+
+
+@blueprint.route("/admin/challenges", methods=["GET"])
+@admins_only
+def admin_list_challenges():
+    try:
+        resp = httpx.get(f"{ORCHESTRATOR_URL}/challenges", headers=_headers(), timeout=10.0)
+        resp.raise_for_status()
+        return jsonify(resp.json())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@blueprint.route("/admin/challenges/<challenge_id>", methods=["PATCH"])
+@admins_only
+@bypass_csrf_protection
+def admin_update_challenge(challenge_id: str):
+    data = request.get_json(force=True)
+    try:
+        resp = httpx.patch(
+            f"{ORCHESTRATOR_URL}/challenges/{challenge_id}",
+            json=data,
+            headers=_headers(),
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return jsonify(resp.json())
+    except httpx.HTTPStatusError as e:
+        return jsonify({"error": e.response.text}), e.response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @blueprint.route("/assets/<path:filename>")
 def serve_assets(filename):
     """Serve static assets (JS, CSS, etc)."""
@@ -180,6 +246,7 @@ def serve_assets(filename):
 
 def load(app):
     register_plugin_assets_directory(app, base_path="/plugins/isolatex/assets/")
+    register_admin_plugin_menu_bar("IsolateX", "/isolatex/admin")
     app.register_blueprint(blueprint)
 
     # Inject script into every HTML response

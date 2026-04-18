@@ -1,4 +1,7 @@
-# kCTF Fresh Setup Guide
+# kCTF Setup Guide
+
+> **Operator guide** — This document is for infrastructure operators setting up the Kubernetes cluster.
+> CTF organizers adding challenges do not need this — see [setup.md](setup.md) instead.
 
 kCTF is Google's CTF infrastructure framework. It uses Kubernetes with nsjail
 (namespace-based sandboxing) inside each pod for challenge isolation.

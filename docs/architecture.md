@@ -2,107 +2,122 @@
 
 ## Overview
 
-IsolateX is a thin connector between CTFd and Kubernetes. It does not replace Kubernetes — Kubernetes is the orchestrator. IsolateX handles the CTFd-facing API, per-team instance mapping, TTL enforcement, flag derivation, and gateway routing.
-
-## Stack
-
 ```
-┌──────────────────────────────────────────────────────┐
-│                    CTFd (stock)                      │
-│   IsolateX plugin injects the instance panel         │
-└──────────────────────┬───────────────────────────────┘
-                       │ REST (x-api-key)
-                       ▼
-┌──────────────────────────────────────────────────────┐
-│              IsolateX Orchestrator (FastAPI)         │
-│                                                      │
-│  POST /instances          Launch instance            │
-│  GET  /instances/team/... Check status               │
-│  DELETE /instances/{id}   Stop instance              │
-│  POST /instances/{id}/restart  Restart (TTL reset)   │
-│  POST /instances/{id}/renew    Extend TTL            │
-│                                                      │
-│  TTL reaper (background)  Auto-destroy on expiry     │
-│  Worker picker            Least-loaded scheduler     │
-│  Flag derivation          HMAC per team+challenge    │
-└──────────────────────┬───────────────────────────────┘
-                       │
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-    ┌──────────┐ ┌──────────┐ ┌──────────────────────────┐
-    │  Docker  │ │   kCTF   │ │  Kata / kata-firecracker │
-    │  worker  │ │  worker  │ │          worker          │
-    └──────────┘ └──────────┘ └──────────────────────────┘
-          │            │                │
-          ▼            ▼                ▼
-    Container     K8s pod +       K8s pod +
-                   nsjail        Kata VM
-                                (QEMU or Firecracker
-                                 as Kata backend)
+┌─────────────────────────────────────────────────┐
+│                 CTFd (stock)                    │
+│  IsolateX plugin injects the instance panel     │
+│  Admin UI: Plugins → IsolateX                   │
+└─────────────────────┬───────────────────────────┘
+                      │ REST (x-api-key)
+                      ▼
+┌─────────────────────────────────────────────────┐
+│         IsolateX Orchestrator (FastAPI)         │
+│                                                 │
+│  /instances      Launch, stop, restart, renew   │
+│  /challenges     Register & configure           │
+│  /workers        Worker registry + heartbeat    │
+│                                                 │
+│  TTL reaper      Auto-destroy on expiry (30s)   │
+│  Worker picker   Least-loaded scheduler         │
+│  Flag derivation HMAC per team+challenge        │
+│  Router          Traefik / Nginx config update  │
+└──────────┬────────────────┬─────────────────────┘
+           │                │
+     ┌─────▼──────┐  ┌──────▼──────────────────┐
+     │   Docker   │  │  Kubernetes workers      │
+     │   worker   │  │  kctf / kata / kata-fc   │
+     └─────┬──────┘  └──────┬──────────────────┘
+           │                │
+    Docker container    K8s pod (nsjail / Kata VM)
 ```
 
-## Runtime model
+## Components
 
-All four runtimes are Kubernetes-native. Workers are FastAPI agents that receive `/launch` and `/destroy` calls from the orchestrator and translate them into Kubernetes API calls.
+### CTFd plugin (`ctfd-plugin/`)
+
+A Flask blueprint mounted into CTFd. It:
+- Injects `isolatex.js` into every CTFd HTML page via an `after_request` hook
+- Exposes routes that the player's browser calls: `GET/POST/DELETE /isolatex/instance/<challenge_id>` and `/restart`, `/renew`
+- Exposes admin routes: `GET/POST /isolatex/admin/config`, `GET/PATCH /isolatex/admin/challenges/<id>`
+- Proxies all calls to the orchestrator using a shared API key
+
+The player UI (`isolatex.js`) is a vanilla JS IIFE — no framework. It uses `MutationObserver` to detect when CTFd dynamically renders a challenge modal, then renders the instance panel inside it.
+
+### Orchestrator (`orchestrator/`)
+
+A FastAPI application. It owns:
+- **Instance lifecycle** — creates, tracks, and destroys instances
+- **Worker registry** — workers self-register and send heartbeats every 30s; the orchestrator picks the least-loaded healthy worker for each launch
+- **Challenge registry** — stores image, port, runtime, resource limits, TTL per challenge
+- **Flag derivation** — `HMAC-SHA256(secret, team_id:challenge_id:instance_id:salt)`
+- **TTL reaper** — background task that runs every 30s and destroys expired instances
+- **Routing** — registers/deregisters Traefik routes when instances start/stop
+
+### Workers (`worker/`)
+
+A FastAPI agent that runs on each host. The orchestrator calls `/launch` and `/destroy` on the worker. The worker translates these into runtime-specific operations.
+
+| Worker adapter | File | What it does |
+|---|---|---|
+| `docker` | `adapters/docker.py` | Runs `docker run` with resource limits and cap-drop |
+| `kctf` | `adapters/kctf.py` | Creates a Kubernetes pod with nsjail + network policy |
+| `kata` | `adapters/kata.py` | Creates a K8s pod with `kata` RuntimeClass (QEMU backend) |
+| `kata-firecracker` | `adapters/kata.py` | Same, with `kata-firecracker` RuntimeClass |
+
+Workers advertise their runtime type. The orchestrator only sends `docker` challenges to Docker workers, `kata` challenges to Kata workers, etc.
+
+---
+
+## Request flow — Launch
 
 ```
-docker          → containerd → runc → container
-kctf            → containerd → runc → container + nsjail
-kata            → containerd → Kata runtime → QEMU → guest VM → container
-kata-firecracker → containerd → Kata runtime → Firecracker → guest VM → container
+1.  Player clicks Launch in CTFd
+2.  isolatex.js → POST /isolatex/instance/<challenge_id>   (CTFd plugin)
+3.  Plugin → POST http://orchestrator:8080/instances       (x-api-key)
+4.  Orchestrator:
+    a. Rejects if team already has a running instance (409)
+    b. Looks up challenge record (image, port, runtime, limits, ttl)
+    c. Picks least-loaded healthy worker for that runtime
+    d. Creates Instance row: status=pending, expires_at=now+ttl
+    e. Returns 201 immediately (background task handles the rest)
+5.  Worker receives POST /launch → runs container / creates pod
+6.  Worker returns { port: <host_port> }
+7.  Orchestrator:
+    a. Registers route with Traefik (or uses localhost:<port> for local dev)
+    b. Updates Instance: status=running, endpoint=<url>
+8.  isolatex.js polls GET /isolatex/instance/<challenge_id> every 5s
+9.  Status=running → renders endpoint link + countdown timer
+10. TTL reaper (every 30s) → destroys expired instances
 ```
-
-For `kata` and `kata-firecracker`, Kata Containers creates a lightweight VM per pod. The VM has its own kernel. The hypervisor (QEMU vs Firecracker) is a Kata configuration detail — Kubernetes just sees a pod with a RuntimeClass.
 
 ## TTL flow
 
 ```
-Instance created → expires_at = now + ttl_seconds
-                                (challenge override or global 30-min default)
+Launch   → expires_at = started_at + ttl_seconds
 
-Player clicks Renew → expires_at += ttl_seconds
-                      (capped: expires_at ≤ now + 2h)
+Renew    → expires_at = min(now + ttl_seconds, started_at + ttl_seconds)
+           (resets to original duration from now, cannot exceed original cap)
 
-Player clicks Restart → old instance destroyed
-                        new instance created, expires_at = now + ttl_seconds
+Restart  → old instance destroyed
+           new instance: expires_at = now + ttl_seconds (full TTL reset)
 
-TTL reaper (every 30s) → finds instances where expires_at ≤ now
-                          calls worker DELETE /destroy/{id}
-                          marks instance destroyed
-                          deregisters gateway route
-```
-
-## Request flow (launch)
-
-```
-1. Player clicks Launch in CTFd
-2. CTFd plugin → POST /isolatex/instance/<challenge_id>
-3. Plugin → POST orchestrator/instances {team_id, challenge_id}
-4. Orchestrator:
-   a. Checks no existing running instance for this team+challenge
-   b. Looks up challenge (runtime, image, resource limits, ttl_seconds)
-   c. Picks least-loaded worker for that runtime
-   d. Creates Instance record (status=pending, expires_at set)
-   e. Fires background task → POST worker/launch
-5. Worker launches pod (Docker / kCTF / Kata RuntimeClass)
-6. Worker returns {port}
-7. Orchestrator registers route with Traefik
-8. Orchestrator updates Instance: status=running, endpoint=https://...
-9. CTFd plugin polls GET /isolatex/instance/<challenge_id> every 5s
-10. Status = running → shows endpoint + countdown timer
-11. TTL expires → reaper destroys instance, deregisters route
+Reaper   → every 30s: finds instances where expires_at ≤ now
+           → calls worker DELETE /destroy/{id}
+           → marks instance destroyed, deregisters gateway route
 ```
 
 ## Data layer
 
-- **Postgres** — instance state, workers, challenges
-- **Redis** — session cache, rate limiting (optional)
+| Store | Used for |
+|---|---|
+| **Postgres** | Instances, challenges, workers (persistent state) |
+| **Redis** | CTFd session cache (used by CTFd, not orchestrator directly) |
 
-## Gateway
+## Endpoint format
 
-Traefik polls the orchestrator's `/traefik/config` endpoint every 5 seconds and updates routes dynamically. Each instance gets a unique subdomain:
+| Environment | Format |
+|---|---|
+| Local dev (`BASE_DOMAIN=localhost`) | `http://localhost:<host_port>` |
+| Production | `https://<instance-prefix>.<challenge-id>.<base-domain>` |
 
-```
-<instance-id-prefix>.<challenge-id>.<base-domain>
-e.g. ab12cd34.web100.ctf.osiris.sh
-```
+Traefik polls `/traefik/config` every 5 seconds and updates its routing table dynamically. For local dev, Traefik is not used — the worker binds a host port directly and the endpoint is `http://localhost:<port>`.

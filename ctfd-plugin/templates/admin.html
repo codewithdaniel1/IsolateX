@@ -1,0 +1,260 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="jumbotron">
+  <div class="container">
+    <h1>IsolateX</h1>
+    <p class="lead">Manage challenge instance settings</p>
+  </div>
+</div>
+
+<div class="container" id="ix-admin">
+
+  <!-- Global defaults -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header"><strong>Global Defaults</strong>
+          <small class="text-muted ms-2">Applied to any challenge without a per-challenge override</small>
+        </div>
+        <div class="card-body">
+          <form id="global-form" class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label">Default TTL (minutes)</label>
+              <input type="number" class="form-control" id="g-ttl" min="1" max="480">
+              <div class="form-text">How long each instance runs before auto-stopping</div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Max TTL / Renew Cap (minutes)</label>
+              <input type="number" class="form-control" id="g-max-ttl" min="1" max="480">
+              <div class="form-text">Players cannot renew past this from launch time</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Default Resource Tier <small class="text-muted">(sets CPU + Memory for all challenges on "Global default")</small></label>
+              <select class="form-select" id="g-tier">
+                <option value="0.5">Tier 1 — 0.5 cores / 256 MB (Docker)</option>
+                <option value="1">Tier 2 — 1 core / 512 MB (kCTF)</option>
+                <option value="2">Tier 3 — 2 cores / 1 GB (Kata)</option>
+                <option value="4">Tier 4 — 4 cores / 2 GB (Kata-FC)</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-primary">Save Global Defaults</button>
+              <span id="global-msg" class="ms-3 small"></span>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Per-challenge table -->
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header"><strong>Per-Challenge Settings</strong></div>
+        <div class="card-body p-0">
+          <table class="table table-sm table-hover mb-0" id="chal-table">
+            <thead class="table-dark">
+              <tr>
+                <th>Challenge</th>
+                <th>Runtime</th>
+                <th>TTL (min) <small class="text-muted fw-normal">blank = global</small></th>
+                <th>Resource Tier <small class="text-muted fw-normal">sets CPU + Memory</small></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="chal-tbody">
+              <tr><td colspan="5" class="text-center text-muted py-3">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  const NONCE = window.init?.csrfNonce || "";
+
+  // ── helpers ────────────────────────────────────────────────────────────────
+  async function api(url, method, body) {
+    const r = await fetch(url, {
+      method: method || "GET",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "CSRF-Token": NONCE },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    if (r.status === 204) return {};
+    return r.json();
+  }
+
+  function minToSec(v) { return v ? parseInt(v) * 60 : null; }
+  function secToMin(v) { return v ? Math.round(v / 60) : ""; }
+
+  let globalTierCpu = 1; // updated after loadGlobals and on dropdown change
+
+  // ── global defaults ────────────────────────────────────────────────────────
+  async function loadGlobals() {
+    try {
+      const d = await api("/isolatex/admin/config");
+      document.getElementById("g-ttl").value     = secToMin(d.default_ttl_seconds);
+      document.getElementById("g-max-ttl").value = secToMin(d.max_ttl_seconds);
+      globalTierCpu = d.default_cpu_count ?? 1;
+      document.getElementById("g-tier").value    = String(globalTierCpu);
+    } catch(e) { console.error(e); }
+  }
+
+  document.getElementById("global-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("global-msg");
+    msg.textContent = "Saving…"; msg.className = "ms-3 small text-muted";
+    const cpu = parseFloat(document.getElementById("g-tier").value);
+    const tier = tierFromCpu(cpu);
+    try {
+      await api("/isolatex/admin/config", "POST", {
+        default_ttl_seconds: minToSec(document.getElementById("g-ttl").value) || 1800,
+        max_ttl_seconds:     minToSec(document.getElementById("g-max-ttl").value) || 7200,
+        default_cpu_count:   cpu,
+        default_memory_mb:   tier ? tier.mem : 512,
+      });
+      msg.textContent = "Saved."; msg.className = "ms-3 small text-success";
+      // Update runtime badges for all rows still on "Global default"
+      document.querySelectorAll("#chal-tbody tr").forEach(row => {
+        const sel = row.querySelector(".ix-tier");
+        if (sel && sel.value === "") updateRuntimeBadge(row, cpu);
+      });
+    } catch(e) {
+      msg.textContent = "Error: " + e.message; msg.className = "ms-3 small text-danger";
+    }
+    setTimeout(() => { msg.textContent = ""; }, 3000);
+  });
+
+  // ── tier definitions ───────────────────────────────────────────────────────
+  const TIERS = [
+    { cpu: 0.5, mem: 256,  label: "T1 — 0.5 cores / 256 MB",  runtime: "Docker",    badge: "bg-primary" },
+    { cpu: 1,   mem: 512,  label: "T2 — 1 core / 512 MB",     runtime: "kCTF",      badge: "bg-success" },
+    { cpu: 2,   mem: 1024, label: "T3 — 2 cores / 1 GB",      runtime: "Kata",      badge: "bg-warning text-dark" },
+    { cpu: 4,   mem: 2048, label: "T4 — 4 cores / 2 GB",      runtime: "Kata-FC",   badge: "bg-danger"  },
+  ];
+
+  const RUNTIME_LABEL = {
+    "docker":           "Docker",
+    "kctf":             "kCTF",
+    "kata":             "Kata",
+    "kata-firecracker": "Kata-FC",
+  };
+
+  function tierFromCpu(cpu) {
+    return TIERS.find(t => t.cpu === cpu) || null;
+  }
+
+  function tierOptions(selectedCpu) {
+    // Show "Global default" if null OR if cpu matches the current global tier
+    const isGlobal = selectedCpu == null || selectedCpu === globalTierCpu;
+    const globalOpt = `<option value=""${isGlobal ? " selected" : ""}>Global default</option>`;
+    const opts = TIERS.map(t =>
+      `<option value="${t.cpu}"${!isGlobal && selectedCpu === t.cpu ? " selected" : ""}>${t.label} (${t.runtime})</option>`
+    ).join("");
+    return globalOpt + opts;
+  }
+
+  function updateRuntimeBadge(row, cpu) {
+    const badge = row.querySelector(".ix-runtime-badge");
+    const effectiveCpu = (cpu == null) ? globalTierCpu : cpu;
+    const tier = tierFromCpu(effectiveCpu);
+    if (tier) {
+      const label = tier.runtime;
+      badge.textContent = label;
+      badge.className = `badge ${tier.badge} ix-runtime-badge`;
+    } else {
+      badge.textContent = "—";
+      badge.className = "badge bg-secondary ix-runtime-badge";
+    }
+  }
+
+  // ── per-challenge table ────────────────────────────────────────────────────
+  async function loadChallenges() {
+    const tbody = document.getElementById("chal-tbody");
+    try {
+      const chals = await api("/isolatex/admin/challenges");
+      tbody.innerHTML = chals.map(c => {
+        const cpu = c.cpu_count ?? null;
+        return `
+        <tr data-id="${c.id}" data-runtime="${c.runtime}">
+          <td class="align-middle"><strong>${c.id}</strong><br><small class="text-muted">${c.name}</small></td>
+          <td class="align-middle">
+            <span class="badge bg-secondary ix-runtime-badge">—</span>
+          </td>
+          <td><input type="number" class="form-control form-control-sm ix-ttl" style="width:90px"
+               value="${secToMin(c.ttl_seconds)}" placeholder="global" min="1" max="480"></td>
+          <td>
+            <select class="form-select form-select-sm ix-tier" style="width:230px" data-cpu="${cpu ?? ''}">
+              ${tierOptions(cpu)}
+            </select>
+          </td>
+          <td>
+            <button class="btn btn-sm btn-primary ix-save" data-id="${c.id}">Save</button>
+            <span class="ix-row-msg ms-2 small"></span>
+          </td>
+        </tr>`;
+      }).join("");
+
+      // Wire up tier dropdowns — selecting a tier updates the runtime badge
+      tbody.querySelectorAll(".ix-tier").forEach(sel => {
+        const row = sel.closest("tr");
+        // Set initial badge from stored cpu_count
+        const initCpu = sel.dataset.cpu ? parseFloat(sel.dataset.cpu) : null;
+        updateRuntimeBadge(row, initCpu);
+
+        sel.addEventListener("change", () => {
+          const cpu = sel.value ? parseFloat(sel.value) : null;
+          updateRuntimeBadge(row, cpu);
+        });
+      });
+
+      tbody.querySelectorAll(".ix-save").forEach(btn => {
+        btn.addEventListener("click", () => saveChallenge(btn.dataset.id));
+      });
+    } catch(e) {
+      tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-3">${e.message}</td></tr>`;
+    }
+  }
+
+  async function saveChallenge(id) {
+    const row = document.querySelector(`tr[data-id="${id}"]`);
+    const msg = row.querySelector(".ix-row-msg");
+    const ttlVal = row.querySelector(".ix-ttl").value;
+    const tierVal = row.querySelector(".ix-tier").value;
+    const tier = tierVal ? TIERS.find(t => t.cpu === parseFloat(tierVal)) : null;
+    msg.textContent = "Saving…"; msg.className = "ix-row-msg ms-2 small text-muted";
+    // If "Global default", apply the current global tier's cpu/memory explicitly
+    const effectiveTier = tier || tierFromCpu(globalTierCpu);
+    try {
+      await api(`/isolatex/admin/challenges/${id}`, "PATCH", {
+        ttl_seconds: ttlVal ? parseInt(ttlVal) * 60 : null,
+        cpu_count:   effectiveTier ? effectiveTier.cpu : null,
+        memory_mb:   effectiveTier ? effectiveTier.mem : null,
+      });
+      msg.textContent = "Saved."; msg.className = "ix-row-msg ms-2 small text-success";
+      // Refresh badge — null tierVal means "Global default", so use globalTierCpu
+      updateRuntimeBadge(row, tier ? tier.cpu : null);
+    } catch(e) {
+      msg.textContent = "Error: " + e.message; msg.className = "ix-row-msg ms-2 small text-danger";
+    }
+    setTimeout(() => { msg.textContent = ""; }, 3000);
+  }
+
+  // Keep globalTierCpu in sync with the dropdown as it changes
+  document.getElementById("g-tier").addEventListener("change", function () {
+    globalTierCpu = parseFloat(this.value);
+  });
+
+  // Load globals first so globalTierCpu is set before badges render
+  loadGlobals().then(loadChallenges);
+})();
+</script>
+{% endblock %}

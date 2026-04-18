@@ -155,6 +155,7 @@
     stopTimer(ctx);
     hide(ctx.endpoint);
     hide(ctx.ttl);
+    enableAll(ctx);
     hideAllButtons(ctx);
 
     const status = data.status;
@@ -211,23 +212,21 @@
     setStatus(ctx, "Launching…");
     try {
       await api(ctx.cid, "POST");
-      setTimeout(() => refresh(ctx), POLL_MS);
     } catch (e) {
       showMsg(ctx, `Launch failed: ${e.message}`);
-      await refresh(ctx);
     }
+    await refresh(ctx);
   }
 
   async function doRestart(ctx) {
     disableAll(ctx);
-    setStatus(ctx, "Restarting… (TTL will reset)");
+    setStatus(ctx, "Restarting…");
     try {
       await apiFetch(`/isolatex/instance/${ctx.cid}/restart`, "POST");
-      setTimeout(() => refresh(ctx), POLL_MS);
     } catch (e) {
       showMsg(ctx, `Restart failed: ${e.message}`);
-      await refresh(ctx);
     }
+    await refresh(ctx);
   }
 
   async function doRenew(ctx) {
@@ -236,15 +235,14 @@
     try {
       const data = await apiFetch(`/isolatex/instance/${ctx.cid}/renew`, "POST");
       showMsg(ctx, `Time extended by ${Math.round(data.seconds_added / 60)} minutes.`, "text-success");
-      await refresh(ctx);
     } catch (e) {
       if (e.status === 409) {
-        showMsg(ctx, "Already at the 2-hour maximum. Cannot extend further.");
+        showMsg(ctx, "Already at maximum time. Cannot extend further.");
       } else {
         showMsg(ctx, `Renew failed: ${e.message}`);
       }
-      await refresh(ctx);
     }
+    await refresh(ctx);
   }
 
   async function doStop(ctx) {
@@ -256,7 +254,7 @@
     } catch (e) {
       showMsg(ctx, `Stop failed: ${e.message}`);
     }
-    setTimeout(() => refresh(ctx), 1500);
+    await refresh(ctx);
   }
 
   // -------------------------------------------------------------------------
@@ -329,6 +327,12 @@
     });
   }
 
+  function enableAll(ctx) {
+    [ctx.btnLaunch, ctx.btnRestart, ctx.btnRenew, ctx.btnStop].forEach((b) => {
+      b.disabled = false;
+    });
+  }
+
   function show(el) { el.style.display = ""; }
   function hide(el) { el.style.display = "none"; }
   function pad(n)   { return String(n).padStart(2, "0"); }
@@ -343,12 +347,30 @@
   }
 
   async function apiFetch(url, method) {
-    const resp = await fetch(url, { method });
+    const opts = {
+      method,
+      credentials: "same-origin", // Include cookies
+      headers: {
+        "Content-Type": "application/json",
+      },
+    };
+
+    // CTFd CSRF: for JSON requests it checks session nonce == CSRF-Token header
+    const nonce = window.init?.csrfNonce;
+    if (nonce) {
+      opts.headers["CSRF-Token"] = nonce;
+    } else {
+      // Bypass CSRF entirely using Authorization header (no session needed)
+      opts.headers["Authorization"] = "Token isolatex-bypass";
+    }
+
+    const resp = await fetch(url, opts);
     let data;
     try { data = await resp.json(); } catch { data = {}; }
     if (!resp.ok) {
-      const err = new Error(data.error || resp.statusText);
+      const err = new Error(data.error || `HTTP ${resp.status}: ${resp.statusText}`);
       err.status = resp.status;
+      console.error(`[IsolateX] API error: ${url}`, err, data);
       throw err;
     }
     return data;

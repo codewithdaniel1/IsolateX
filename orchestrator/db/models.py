@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, String, Integer, Boolean, DateTime, Text, Enum as SAEnum, ForeignKey
+    Column, String, Integer, Float, Boolean, DateTime, Text, Enum as SAEnum, ForeignKey
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase
@@ -72,7 +72,7 @@ class Challenge(Base):
     name         = Column(String, nullable=False)
     runtime      = Column(SAEnum(RuntimeType), nullable=False)
     image        = Column(String, nullable=True)   # container image (docker/kctf/kata)
-    cpu_count    = Column(Integer, default=1)
+    cpu_count    = Column(Float, default=1.0)
     memory_mb    = Column(Integer, default=512)
     port         = Column(Integer, nullable=False, default=8888)
     # TTL: None means use global default (settings.default_ttl_seconds = 1800)

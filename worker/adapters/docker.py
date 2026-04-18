@@ -56,7 +56,6 @@ class DockerAdapter(RuntimeAdapter):
                 "--driver", "bridge",
                 "--opt", "com.docker.network.bridge.enable_icc=false",
                 "--opt", "com.docker.network.bridge.enable_ip_masquerade=true",
-                "--internal",
                 settings.docker_network,
                 check=False,
             )
@@ -90,14 +89,13 @@ class DockerAdapter(RuntimeAdapter):
             "--cpus", str(req.cpu_count),
             "--memory", f"{req.memory_mb}m",
             "--pids-limit", str(extra.get("pids_limit", 256)),
-            # Hardening
-            "--read-only",
-            "--tmpfs", "/tmp:size=64m,noexec,nosuid",
-            "--cap-drop", "ALL",
-            "--no-new-privileges",
-            "--security-opt", "no-new-privileges:true",
-            req.image,
         ]
+
+        # Hardening — skip cap-drop if the image needs privileges (e.g. legacy LAMP stacks)
+        if not extra.get("skip_cap_drop"):
+            cmd += ["--cap-drop", "ALL", "--security-opt", "no-new-privileges:true"]
+
+        cmd += [req.image]
 
         await _run(*cmd)
         metadata = {"host_port": host_port, "container_name": container_name}

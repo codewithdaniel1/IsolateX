@@ -18,7 +18,6 @@ networks:
     driver: bridge
   isolatex_challenges:
     driver: bridge
-    internal: true    # challenge containers have no direct internet by default
     driver_opts:
       com.docker.network.bridge.enable_icc: "false"
 
