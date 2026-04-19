@@ -151,7 +151,7 @@
     tbody.innerHTML = chals.map(c => {
       const rt = runtimeMeta(c.runtime);
       return `
-      <tr data-id="${c.id}" data-image="${c.image || ""}">
+      <tr data-id="${c.id}" data-image="${c.image || ""}" data-port="${c.port || 8080}">
         <td class="align-middle">
           <strong>${c.name}</strong>
           <small class="text-muted d-block">${c.category || ""}${c.points ? " · " + c.points + " pts" : ""}</small>
@@ -185,6 +185,7 @@
     const name    = row.querySelector("strong").textContent.trim();
     const runtime = row.querySelector(".ix-runtime").value;
     const image   = row.dataset.image || "";
+    const port    = parseInt(row.dataset.port) || 8080;
     const tierVal = row.querySelector(".ix-tier").value;
     const tier    = TIERS.find(t => t.cpu === parseFloat(tierVal)) || TIERS[0];
 
@@ -193,7 +194,7 @@
     try {
       await api(`/isolatex/admin/challenges/${id}`, "POST", {
         id, name, runtime, image,
-        port:        8080,
+        port,
         cpu_count:   tier.cpu,
         memory_mb:   tier.mem,
         ttl_seconds: TTL_SECONDS,

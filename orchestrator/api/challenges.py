@@ -13,6 +13,9 @@ router = APIRouter(prefix="/challenges", tags=["challenges"])
 @router.post("", response_model=ChallengeResponse, status_code=201,
              dependencies=[Depends(require_api_key)])
 async def create_challenge(body: ChallengeCreate, db: AsyncSession = Depends(get_db)):
+    existing = await db.execute(select(Challenge).where(Challenge.id == body.id))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="challenge already exists")
     challenge = Challenge(**body.model_dump())
     db.add(challenge)
     await db.commit()
