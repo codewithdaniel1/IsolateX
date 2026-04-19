@@ -173,6 +173,8 @@
 
     if (status === "pending") {
       setStatus(ctx, "Starting… (this can take a few seconds)");
+      show(ctx.btnLaunch);
+      disableAll(ctx);
       setTimeout(() => refresh(ctx), POLL_MS);
       return;
     }

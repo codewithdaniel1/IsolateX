@@ -253,24 +253,36 @@ def admin_list_ctfd_challenges():
         Challenges.category, Challenges.value, Challenges.id
     ).all()
 
+    import re as _re
+
+    def _strip_html(s):
+        return _re.sub(r"<[^>]+>", "", s or "").strip()
+
     result = []
     for c in ctfd_chals:
         slug = c.name.lower().replace(" ", "-")
-        ix = ix_by_id.get(slug) or ix_by_id.get(str(c.id))
+        # Match against slug, exact name, or any registered id that starts with the slug
+        ix = ix_by_id.get(slug) or ix_by_id.get(c.name.lower())
+        if not ix:
+            # fallback: find any ix entry whose id the slug starts with or vice versa
+            for k, v in ix_by_id.items():
+                if k == slug or slug.startswith(k) or k.startswith(slug):
+                    ix = v
+                    break
         result.append({
             "ctfd_id":     c.id,
-            "id":          slug,
+            "id":          ix["id"] if ix else slug,
             "name":        c.name,
-            "category":    c.category,
+            "category":    c.category or "",
             "points":      c.value,
-            "description": c.description or "",
+            "description": _strip_html(c.description),
             "enabled":     ix is not None,
-            "runtime":    ix["runtime"]   if ix else "docker",
-            "image":      ix["image"]     if ix else "",
-            "port":       ix["port"]      if ix else 8888,
-            "cpu_count":  ix["cpu_count"] if ix else 1,
-            "memory_mb":  ix["memory_mb"] if ix else 512,
-            "ttl_seconds":ix["ttl_seconds"] if ix else None,
+            "runtime":     ix["runtime"]    if ix else "docker",
+            "image":       ix["image"]      if ix else "",
+            "port":        ix["port"]       if ix else 8080,
+            "cpu_count":   ix["cpu_count"]  if ix else 1,
+            "memory_mb":   ix["memory_mb"]  if ix else 512,
+            "ttl_seconds": ix["ttl_seconds"] if ix else None,
         })
     return jsonify(result)
 
