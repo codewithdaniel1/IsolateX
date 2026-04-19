@@ -44,7 +44,7 @@ async def update_challenge(challenge_id: str, body: ChallengeUpdate, db: AsyncSe
     c = result.scalar_one_or_none()
     if not c:
         raise HTTPException(status_code=404, detail="not found")
-    non_nullable = {"cpu_count", "memory_mb"}
+    non_nullable = {"cpu_count", "memory_mb", "port"}
     for field, value in body.model_dump(exclude_unset=True).items():
         if value is None and field in non_nullable:
             continue

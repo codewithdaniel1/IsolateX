@@ -4,7 +4,7 @@
 <div class="jumbotron">
   <div class="container">
     <h1>IsolateX</h1>
-    <p class="lead">Manage challenge instance settings</p>
+    <p class="lead">Per-team challenge instancing</p>
   </div>
 </div>
 
@@ -15,25 +15,25 @@
     <div class="col-12">
       <div class="card">
         <div class="card-header"><strong>Global Defaults</strong>
-          <small class="text-muted ms-2">Applied to any challenge without a per-challenge override</small>
+          <small class="text-muted ms-2">Applied to any enabled challenge that doesn't have its own override</small>
         </div>
         <div class="card-body">
-          <form id="global-form" class="row g-3">
+          <form id="global-form" class="row g-3 align-items-end">
             <div class="col-md-3">
-              <label class="form-label">Default TTL (minutes)</label>
-              <input type="number" class="form-control" id="g-ttl" min="1" max="480">
-              <div class="form-text">How long each instance runs. Renew always resets to this duration.</div>
+              <label class="form-label">Instance TTL (minutes)</label>
+              <input type="number" class="form-control" id="g-ttl" min="1" max="480" placeholder="30">
+              <div class="form-text">How long each instance lives. Renew resets to this duration.</div>
             </div>
             <div class="col-md-4">
-              <label class="form-label">Default Resource Tier <small class="text-muted">(sets CPU + Memory for all challenges on "Global default")</small></label>
+              <label class="form-label">Default Resource Tier</label>
               <select class="form-select" id="g-tier">
                 <option value="1">Tier 1 — 1 core / 512 MB</option>
                 <option value="2">Tier 2 — 2 cores / 1 GB</option>
                 <option value="4">Tier 3 — 4 cores / 2 GB</option>
               </select>
             </div>
-            <div class="col-12">
-              <button type="submit" class="btn btn-primary">Save Global Defaults</button>
+            <div class="col-auto">
+              <button type="submit" class="btn btn-primary">Save</button>
               <span id="global-msg" class="ms-3 small"></span>
             </div>
           </form>
@@ -42,26 +42,56 @@
     </div>
   </div>
 
-  <!-- Per-challenge table -->
+  <!-- Challenge table -->
   <div class="row">
     <div class="col-12">
       <div class="card">
-        <div class="card-header"><strong>Per-Challenge Settings</strong></div>
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <div>
+            <strong>Challenges</strong>
+            <small class="text-muted ms-2">Toggle instancing on/off per challenge. Changes save automatically.</small>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <input type="text" class="form-control form-control-sm" id="search-box" placeholder="Filter…" style="width:180px">
+            <span id="chal-count" class="badge bg-secondary">…</span>
+          </div>
+        </div>
         <div class="card-body p-0">
           <table class="table table-sm table-hover mb-0" id="chal-table">
             <thead class="table-dark">
               <tr>
+                <th style="width:36px">On</th>
                 <th>Challenge</th>
-                <th>Runtime</th>
-                <th>TTL (min) <small class="text-muted fw-normal">blank = global</small></th>
-                <th>Resource Tier <small class="text-muted fw-normal">sets CPU + Memory</small></th>
-                <th></th>
+                <th style="width:90px">Runtime</th>
+                <th style="width:200px">Docker Image</th>
+                <th style="width:70px">Port</th>
+                <th style="width:140px">Tier</th>
+                <th style="width:80px">TTL (min)</th>
+                <th style="width:70px"></th>
               </tr>
             </thead>
             <tbody id="chal-tbody">
-              <tr><td colspan="5" class="text-center text-muted py-3">Loading…</td></tr>
+              <tr><td colspan="8" class="text-center text-muted py-4">Loading challenges…</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help card -->
+  <div class="row mt-4 mb-5">
+    <div class="col-12">
+      <div class="card border-0 bg-light">
+        <div class="card-body">
+          <h6 class="card-title">Quick start</h6>
+          <ol class="mb-0 small">
+            <li>Toggle <strong>On</strong> for any challenge that needs a live instance per team.</li>
+            <li>Set the <strong>Docker Image</strong> (the image your challenge container runs) and <strong>Port</strong>.</li>
+            <li>Pick a <strong>Runtime</strong>: Docker for local dev, kCTF for most prod challenges, Kata-FC for pwn/kernel/RCE.</li>
+            <li>Click <strong>Save</strong>. Players will immediately see the Launch button on that challenge.</li>
+          </ol>
+          <p class="mt-2 mb-0 small text-muted">Challenges without instancing enabled are completely unaffected — no panel is shown to players.</p>
         </div>
       </div>
     </div>
@@ -71,34 +101,53 @@
 
 <script>
 (function () {
+  "use strict";
   const NONCE = window.init?.csrfNonce || "";
 
-  // ── helpers ────────────────────────────────────────────────────────────────
+  // ── constants ───────────────────────────────────────────────────────────────
+  const TIERS = [
+    { cpu: 1,   mem: 512,  label: "T1 — 1 core / 512 MB"  },
+    { cpu: 2,   mem: 1024, label: "T2 — 2 cores / 1 GB"   },
+    { cpu: 4,   mem: 2048, label: "T3 — 4 cores / 2 GB"   },
+  ];
+
+  const RUNTIMES = [
+    { value: "docker",           label: "Docker",   badge: "bg-primary"  },
+    { value: "kctf",             label: "kCTF",     badge: "bg-success"  },
+    { value: "kata-firecracker", label: "Kata-FC",  badge: "bg-danger"   },
+  ];
+
+  function tierFromCpu(cpu) { return TIERS.find(t => t.cpu === cpu) || TIERS[0]; }
+  function runtimeMeta(v)   { return RUNTIMES.find(r => r.value === v) || RUNTIMES[0]; }
+
+  // ── API helper ──────────────────────────────────────────────────────────────
   async function api(url, method, body) {
     const r = await fetch(url, {
       method: method || "GET",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "CSRF-Token": NONCE },
-      body: body ? JSON.stringify(body) : undefined,
+      body: body != null ? JSON.stringify(body) : undefined,
     });
-    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
     if (r.status === 204) return {};
-    return r.json();
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || r.statusText);
+    return data;
   }
 
-  function minToSec(v) { return v ? parseInt(v) * 60 : null; }
   function secToMin(v) { return v ? Math.round(v / 60) : ""; }
+  function minToSec(v) { return v ? parseInt(v) * 60 : null; }
 
-  let globalTierCpu = 1; // updated after loadGlobals and on dropdown change
+  let globalTierCpu = 1;
+  let allRows = [];
 
-  // ── global defaults ────────────────────────────────────────────────────────
+  // ── global defaults ─────────────────────────────────────────────────────────
   async function loadGlobals() {
     try {
       const d = await api("/isolatex/admin/config");
-      document.getElementById("g-ttl").value     = secToMin(d.default_ttl_seconds);
       globalTierCpu = d.default_cpu_count ?? 1;
-      document.getElementById("g-tier").value    = String(globalTierCpu);
-    } catch(e) { console.error(e); }
+      document.getElementById("g-ttl").value  = secToMin(d.default_ttl_seconds) || 30;
+      document.getElementById("g-tier").value = String(globalTierCpu);
+    } catch(e) { console.error("loadGlobals", e); }
   }
 
   document.getElementById("global-form").addEventListener("submit", async (e) => {
@@ -111,139 +160,180 @@
       await api("/isolatex/admin/config", "POST", {
         default_ttl_seconds: minToSec(document.getElementById("g-ttl").value) || 1800,
         default_cpu_count:   cpu,
-        default_memory_mb:   tier ? tier.mem : 512,
+        default_memory_mb:   tier.mem,
       });
+      globalTierCpu = cpu;
       msg.textContent = "Saved."; msg.className = "ms-3 small text-success";
-      // Update runtime badges for all rows still on "Global default"
-      document.querySelectorAll("#chal-tbody tr").forEach(row => {
-        const sel = row.querySelector(".ix-tier");
-        if (sel && sel.value === "") updateRuntimeBadge(row, cpu);
-      });
     } catch(e) {
       msg.textContent = "Error: " + e.message; msg.className = "ms-3 small text-danger";
     }
     setTimeout(() => { msg.textContent = ""; }, 3000);
   });
 
-  // ── tier definitions ───────────────────────────────────────────────────────
-  const TIERS = [
-    { cpu: 1,   mem: 512,  label: "T1 — 1 core / 512 MB",    runtime: "Docker",  badge: "bg-primary" },
-    { cpu: 2,   mem: 1024, label: "T2 — 2 cores / 1 GB",     runtime: "kCTF",    badge: "bg-success" },
-    { cpu: 4,   mem: 2048, label: "T3 — 4 cores / 2 GB",     runtime: "Kata-FC", badge: "bg-danger"  },
-  ];
-
-  const RUNTIME_LABEL = {
-    "docker":           "Docker",
-    "kctf":             "kCTF",
-    "kata-firecracker": "Kata-FC",
-  };
-
-  function tierFromCpu(cpu) {
-    return TIERS.find(t => t.cpu === cpu) || null;
-  }
-
-  function tierOptions(selectedCpu) {
-    // Show "Global default" if null OR if cpu matches the current global tier
-    const isGlobal = selectedCpu == null || selectedCpu === globalTierCpu;
-    const globalOpt = `<option value=""${isGlobal ? " selected" : ""}>Global default</option>`;
-    const opts = TIERS.map(t =>
-      `<option value="${t.cpu}"${!isGlobal && selectedCpu === t.cpu ? " selected" : ""}>${t.label} (${t.runtime})</option>`
-    ).join("");
-    return globalOpt + opts;
-  }
-
-  function updateRuntimeBadge(row, cpu) {
-    const badge = row.querySelector(".ix-runtime-badge");
-    const effectiveCpu = (cpu == null) ? globalTierCpu : cpu;
-    const tier = tierFromCpu(effectiveCpu);
-    if (tier) {
-      const label = tier.runtime;
-      badge.textContent = label;
-      badge.className = `badge ${tier.badge} ix-runtime-badge`;
-    } else {
-      badge.textContent = "—";
-      badge.className = "badge bg-secondary ix-runtime-badge";
-    }
-  }
-
-  // ── per-challenge table ────────────────────────────────────────────────────
+  // ── challenge table ─────────────────────────────────────────────────────────
   async function loadChallenges() {
     const tbody = document.getElementById("chal-tbody");
     try {
-      const chals = await api("/isolatex/admin/challenges");
-      tbody.innerHTML = chals.map(c => {
-        const cpu = c.cpu_count ?? null;
-        return `
-        <tr data-id="${c.id}" data-runtime="${c.runtime}">
-          <td class="align-middle"><strong>${c.id}</strong><br><small class="text-muted">${c.name}</small></td>
-          <td class="align-middle">
-            <span class="badge bg-secondary ix-runtime-badge">—</span>
-          </td>
-          <td><input type="number" class="form-control form-control-sm ix-ttl" style="width:90px"
-               value="${secToMin(c.ttl_seconds)}" placeholder="global" min="1" max="480"></td>
-          <td>
-            <select class="form-select form-select-sm ix-tier" style="width:230px" data-cpu="${cpu ?? ''}">
-              ${tierOptions(cpu)}
-            </select>
-          </td>
-          <td>
-            <button class="btn btn-sm btn-primary ix-save" data-id="${c.id}">Save</button>
-            <span class="ix-row-msg ms-2 small"></span>
-          </td>
-        </tr>`;
-      }).join("");
-
-      // Wire up tier dropdowns — selecting a tier updates the runtime badge
-      tbody.querySelectorAll(".ix-tier").forEach(sel => {
-        const row = sel.closest("tr");
-        // Set initial badge from stored cpu_count
-        const initCpu = sel.dataset.cpu ? parseFloat(sel.dataset.cpu) : null;
-        updateRuntimeBadge(row, initCpu);
-
-        sel.addEventListener("change", () => {
-          const cpu = sel.value ? parseFloat(sel.value) : null;
-          updateRuntimeBadge(row, cpu);
-        });
-      });
-
-      tbody.querySelectorAll(".ix-save").forEach(btn => {
-        btn.addEventListener("click", () => saveChallenge(btn.dataset.id));
-      });
+      const chals = await api("/isolatex/admin/ctfd-challenges");
+      allRows = chals;
+      renderTable(chals);
     } catch(e) {
-      tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-3">${e.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-3">${e.message}</td></tr>`;
     }
   }
 
-  async function saveChallenge(id) {
-    const row = document.querySelector(`tr[data-id="${id}"]`);
+  function renderTable(chals) {
+    const tbody = document.getElementById("chal-tbody");
+    document.getElementById("chal-count").textContent = chals.length + " challenges";
+
+    if (!chals.length) {
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">No challenges found in CTFd.</td></tr>`;
+      return;
+    }
+
+    const runtimeOpts = RUNTIMES.map(r =>
+      `<option value="${r.value}">${r.label}</option>`
+    ).join("");
+
+    const tierOpts = TIERS.map(t =>
+      `<option value="${t.cpu}">${t.label}</option>`
+    ).join("");
+
+    tbody.innerHTML = chals.map(c => {
+      const on = c.enabled;
+      const dimCls = on ? "" : "opacity-50";
+      const disabledAttr = on ? "" : "disabled";
+      return `
+      <tr data-id="${c.id}" data-enabled="${on}" class="${dimCls}">
+        <td class="align-middle text-center">
+          <div class="form-check form-switch mb-0 d-flex justify-content-center">
+            <input class="form-check-input ix-toggle" type="checkbox" role="switch"
+                   id="toggle-${c.id}" ${on ? "checked" : ""} style="cursor:pointer">
+          </div>
+        </td>
+        <td class="align-middle">
+          <strong>${c.name}</strong>
+          <small class="text-muted d-block">${c.category || ""}${c.points ? " · " + c.points + " pts" : ""}</small>
+        </td>
+        <td class="align-middle">
+          <select class="form-select form-select-sm ix-runtime" ${disabledAttr}>
+            ${RUNTIMES.map(r => `<option value="${r.value}"${c.runtime === r.value ? " selected" : ""}>${r.label}</option>`).join("")}
+          </select>
+        </td>
+        <td class="align-middle">
+          <input type="text" class="form-control form-control-sm ix-image" ${disabledAttr}
+                 value="${c.image || ""}" placeholder="myimage:latest">
+        </td>
+        <td class="align-middle">
+          <input type="number" class="form-control form-control-sm ix-port" ${disabledAttr}
+                 value="${c.port || 8888}" min="1" max="65535">
+        </td>
+        <td class="align-middle">
+          <select class="form-select form-select-sm ix-tier" ${disabledAttr}>
+            ${TIERS.map(t => `<option value="${t.cpu}"${c.cpu_count === t.cpu ? " selected" : ""}>${t.label}</option>`).join("")}
+          </select>
+        </td>
+        <td class="align-middle">
+          <input type="number" class="form-control form-control-sm ix-ttl" ${disabledAttr}
+                 value="${secToMin(c.ttl_seconds)}" placeholder="global" min="1" max="480">
+        </td>
+        <td class="align-middle">
+          <button class="btn btn-sm btn-primary ix-save" ${disabledAttr} data-id="${c.id}">Save</button>
+          <span class="ix-row-msg ms-1 small d-block" style="min-width:50px"></span>
+        </td>
+      </tr>`;
+    }).join("");
+
+    // Wire toggles
+    tbody.querySelectorAll(".ix-toggle").forEach(tog => {
+      tog.addEventListener("change", () => handleToggle(tog));
+    });
+
+    // Wire save buttons
+    tbody.querySelectorAll(".ix-save").forEach(btn => {
+      btn.addEventListener("click", () => saveRow(btn.dataset.id));
+    });
+  }
+
+  async function handleToggle(tog) {
+    const row = tog.closest("tr");
+    const id  = row.dataset.id;
+    const on  = tog.checked;
     const msg = row.querySelector(".ix-row-msg");
-    const ttlVal = row.querySelector(".ix-ttl").value;
-    const tierVal = row.querySelector(".ix-tier").value;
-    const tier = tierVal ? TIERS.find(t => t.cpu === parseFloat(tierVal)) : null;
-    msg.textContent = "Saving…"; msg.className = "ix-row-msg ms-2 small text-muted";
-    // If "Global default", apply the current global tier's cpu/memory explicitly
-    const effectiveTier = tier || tierFromCpu(globalTierCpu);
-    try {
-      await api(`/isolatex/admin/challenges/${id}`, "PATCH", {
-        ttl_seconds: ttlVal ? parseInt(ttlVal) * 60 : null,
-        cpu_count:   effectiveTier ? effectiveTier.cpu : null,
-        memory_mb:   effectiveTier ? effectiveTier.mem : null,
-      });
-      msg.textContent = "Saved."; msg.className = "ix-row-msg ms-2 small text-success";
-      // Refresh badge — null tierVal means "Global default", so use globalTierCpu
-      updateRuntimeBadge(row, tier ? tier.cpu : null);
-    } catch(e) {
-      msg.textContent = "Error: " + e.message; msg.className = "ix-row-msg ms-2 small text-danger";
+
+    // Dim/undim row and enable/disable fields immediately for responsiveness
+    row.dataset.enabled = on;
+    row.classList.toggle("opacity-50", !on);
+    row.querySelectorAll("input, select, button.ix-save").forEach(el => {
+      el.disabled = !on;
+    });
+    tog.disabled = false; // keep toggle itself always enabled
+
+    if (!on) {
+      // Disable: remove from orchestrator
+      msg.textContent = "…"; msg.className = "ix-row-msg ms-1 small d-block text-muted";
+      try {
+        await api(`/isolatex/admin/challenges/${id}/disable`, "POST");
+        msg.textContent = "Off."; msg.className = "ix-row-msg ms-1 small d-block text-muted";
+      } catch(e) {
+        msg.textContent = "Error"; msg.className = "ix-row-msg ms-1 small d-block text-danger";
+        // Roll back toggle on error
+        tog.checked = true;
+        row.classList.remove("opacity-50");
+        row.querySelectorAll("input, select, button.ix-save").forEach(el => { el.disabled = false; });
+        tog.disabled = false;
+      }
+    } else {
+      // Enabled: auto-save with current values
+      await saveRow(id, true);
     }
-    setTimeout(() => { msg.textContent = ""; }, 3000);
+    setTimeout(() => { msg.textContent = ""; }, 2500);
   }
 
-  // Keep globalTierCpu in sync with the dropdown as it changes
-  document.getElementById("g-tier").addEventListener("change", function () {
-    globalTierCpu = parseFloat(this.value);
+  async function saveRow(id, silent) {
+    const row  = document.querySelector(`tr[data-id="${id}"]`);
+    const msg  = row.querySelector(".ix-row-msg");
+    const name = row.querySelector("strong").textContent.trim();
+    const runtime  = row.querySelector(".ix-runtime").value;
+    const image    = row.querySelector(".ix-image").value.trim();
+    const port     = parseInt(row.querySelector(".ix-port").value) || 8888;
+    const cpuVal   = parseFloat(row.querySelector(".ix-tier").value);
+    const tier     = tierFromCpu(cpuVal);
+    const ttlVal   = row.querySelector(".ix-ttl").value;
+
+    if (!image) {
+      msg.textContent = "Need image"; msg.className = "ix-row-msg ms-1 small d-block text-warning";
+      setTimeout(() => { msg.textContent = ""; }, 2500);
+      return;
+    }
+
+    if (!silent) { msg.textContent = "Saving…"; msg.className = "ix-row-msg ms-1 small d-block text-muted"; }
+
+    try {
+      await api(`/isolatex/admin/challenges/${id}`, "POST", {
+        id, name, runtime, image, port,
+        cpu_count:   tier.cpu,
+        memory_mb:   tier.mem,
+        ttl_seconds: minToSec(ttlVal),
+      });
+      msg.textContent = "Saved ✓"; msg.className = "ix-row-msg ms-1 small d-block text-success";
+    } catch(e) {
+      msg.textContent = "Error"; msg.className = "ix-row-msg ms-1 small d-block text-danger";
+      console.error("saveRow", id, e);
+    }
+    setTimeout(() => { msg.textContent = ""; }, 2500);
+  }
+
+  // ── search filter ───────────────────────────────────────────────────────────
+  document.getElementById("search-box").addEventListener("input", function () {
+    const q = this.value.toLowerCase();
+    const filtered = q
+      ? allRows.filter(c => c.name.toLowerCase().includes(q) || (c.category || "").toLowerCase().includes(q))
+      : allRows;
+    renderTable(filtered);
   });
 
-  // Load globals first so globalTierCpu is set before badges render
+  // ── init ────────────────────────────────────────────────────────────────────
   loadGlobals().then(loadChallenges);
 })();
 </script>

@@ -8,11 +8,14 @@ IsolateX gives every team their own isolated challenge environment — players c
 
 ## What players see
 
+On challenges with instancing enabled:
 - **Launch** — starts a private instance
 - **Restart** — kills and relaunches with a fresh TTL
 - **Renew** — resets the countdown timer back to the full TTL duration from now
 - **Stop** — destroys the instance early
 - **Countdown timer** — live "Expires in 23m 14s" display
+
+On challenges without instancing enabled: nothing — the plugin is completely invisible.
 
 ---
 
@@ -47,6 +50,25 @@ Set per-challenge in the admin panel (Plugins → IsolateX):
 
 ## Quick start
 
+### Already have CTFd running? (most common case)
+
+```bash
+git clone https://github.com/codewithdaniel1/IsolateX
+cd IsolateX
+./setup.sh
+cp -r ctfd-plugin/ <path-to-CTFd>/CTFd/plugins/isolatex/
+```
+
+Restart CTFd. Then:
+1. Go to **Admin → Plugins → IsolateX**
+2. You'll see every challenge already in CTFd — just toggle **On** for the ones that need live instances
+3. Set the Docker image and port for each enabled challenge and click **Save**
+4. Done — players see the Launch button immediately on those challenges
+
+Challenges without instancing enabled are completely unaffected — no panel is shown.
+
+### Starting from scratch
+
 ```bash
 git clone https://github.com/codewithdaniel1/IsolateX
 cd IsolateX
@@ -59,17 +81,13 @@ cd IsolateX
 
 # + Kata + Firecracker  (Linux + KVM required)
 ./setup.sh --kata-fc
-
-# Everything at once
-./setup.sh --all
 ```
 
-The script detects what you already have installed and **updates** it rather than reinstalling. On first run it also generates a `.env` file with random secrets.
+The script detects what you already have installed and **updates** it rather than reinstalling. On first run it generates a `.env` file with random secrets.
 
 After the script finishes:
 1. Go to **http://localhost:8000** and complete the CTFd setup wizard
-2. Go to **Admin → Plugins → IsolateX** to set TTL and resource tiers
-3. Register your challenge images with the orchestrator (see [docs/setup.md](docs/setup.md))
+2. Go to **Admin → Plugins → IsolateX** to enable instancing per challenge
 
 ---
 

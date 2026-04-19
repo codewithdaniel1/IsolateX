@@ -72,11 +72,23 @@ def _get_active_instance(challenge_id: str):
 @blueprint.route("/instance/<challenge_id>", methods=["GET"])
 def get_instance(challenge_id: str):
     try:
+        # Check if this challenge is registered for instancing
+        chal_resp = httpx.get(
+            f"{ORCHESTRATOR_URL}/challenges/{challenge_id}",
+            headers=_headers(),
+            timeout=5.0,
+        )
+        if chal_resp.status_code == 404:
+            # Not an instanced challenge — tell the JS to hide the panel
+            return jsonify({"status": "not_instanced"}), 404
+
         resp = _get_active_instance(challenge_id)
         if resp.status_code == 404:
             return jsonify({"status": "none"}), 200
         resp.raise_for_status()
         return jsonify(resp.json())
+    except httpx.HTTPStatusError as e:
+        return jsonify({"error": e.response.text}), e.response.status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -225,30 +237,102 @@ def admin_save_config():
     return jsonify({"status": "ok"})
 
 
+@blueprint.route("/admin/ctfd-challenges", methods=["GET"])
+@admins_only
+def admin_list_ctfd_challenges():
+    """Return all CTFd challenges with their IsolateX registration status merged in."""
+    try:
+        # Fetch IsolateX-registered challenges
+        ix_resp = httpx.get(f"{ORCHESTRATOR_URL}/challenges", headers=_headers(), timeout=10.0)
+        ix_resp.raise_for_status()
+        ix_by_id = {c["id"]: c for c in ix_resp.json()}
+    except Exception:
+        ix_by_id = {}
+
+    ctfd_chals = Challenges.query.order_by(
+        Challenges.category, Challenges.value, Challenges.id
+    ).all()
+
+    result = []
+    for c in ctfd_chals:
+        slug = c.name.lower().replace(" ", "-")
+        ix = ix_by_id.get(slug) or ix_by_id.get(str(c.id))
+        result.append({
+            "ctfd_id":    c.id,
+            "id":         slug,
+            "name":       c.name,
+            "category":   c.category,
+            "points":     c.value,
+            "enabled":    ix is not None,
+            "runtime":    ix["runtime"]   if ix else "docker",
+            "image":      ix["image"]     if ix else "",
+            "port":       ix["port"]      if ix else 8888,
+            "cpu_count":  ix["cpu_count"] if ix else 1,
+            "memory_mb":  ix["memory_mb"] if ix else 512,
+            "ttl_seconds":ix["ttl_seconds"] if ix else None,
+        })
+    return jsonify(result)
+
+
 @blueprint.route("/admin/challenges", methods=["GET"])
 @admins_only
 def admin_list_challenges():
     try:
         resp = httpx.get(f"{ORCHESTRATOR_URL}/challenges", headers=_headers(), timeout=10.0)
         resp.raise_for_status()
-        ix_challenges = resp.json()
+        return jsonify(resp.json())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-        # Build CTFd order map: challenge slug → (category, points, ctfd_id)
-        ctfd_chals = Challenges.query.order_by(
-            Challenges.category, Challenges.value, Challenges.id
-        ).all()
-        # Map by normalized slug (lowercase, spaces→hyphens) matching IsolateX IDs
-        ctfd_order = {}
-        for i, c in enumerate(ctfd_chals):
-            slug = c.name.lower().replace(" ", "-")
-            ctfd_order[slug] = i
-            ctfd_order[c.name] = i  # also index by exact name
 
-        def sort_key(c):
-            return ctfd_order.get(c["id"], ctfd_order.get(c["name"], 9999))
+@blueprint.route("/admin/challenges/<challenge_id>", methods=["POST"])
+@admins_only
+@bypass_csrf_protection
+def admin_register_challenge(challenge_id: str):
+    """Register (or re-register) a challenge with the orchestrator."""
+    data = request.get_json(force=True)
+    try:
+        resp = httpx.post(
+            f"{ORCHESTRATOR_URL}/challenges",
+            json=data,
+            headers=_headers(),
+            timeout=10.0,
+        )
+        if resp.status_code == 409:
+            # Already registered — update instead
+            upd = httpx.patch(
+                f"{ORCHESTRATOR_URL}/challenges/{challenge_id}",
+                json=data,
+                headers=_headers(),
+                timeout=10.0,
+            )
+            upd.raise_for_status()
+            return jsonify(upd.json()), 200
+        resp.raise_for_status()
+        return jsonify(resp.json()), 201
+    except httpx.HTTPStatusError as e:
+        return jsonify({"error": e.response.text}), e.response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-        ix_challenges.sort(key=sort_key)
-        return jsonify(ix_challenges)
+
+@blueprint.route("/admin/challenges/<challenge_id>/disable", methods=["POST"])
+@admins_only
+@bypass_csrf_protection
+def admin_disable_challenge(challenge_id: str):
+    """Remove a challenge from IsolateX (stops new instances; existing ones finish naturally)."""
+    try:
+        resp = httpx.delete(
+            f"{ORCHESTRATOR_URL}/challenges/{challenge_id}",
+            headers=_headers(),
+            timeout=10.0,
+        )
+        if resp.status_code == 404:
+            return jsonify({"status": "not_registered"}), 200
+        resp.raise_for_status()
+        return jsonify({"status": "disabled"}), 200
+    except httpx.HTTPStatusError as e:
+        return jsonify({"error": e.response.text}), e.response.status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -146,7 +146,12 @@
       const data = await api(ctx.cid, "GET");
       render(ctx, data);
     } catch (e) {
-      setStatus(ctx, "Error talking to IsolateX. Try refreshing.", "text-danger");
+      if (e.status === 404) {
+        // Challenge not registered for instancing — hide the panel entirely
+        ctx.panel.style.display = "none";
+      } else {
+        setStatus(ctx, "Error talking to IsolateX. Try refreshing.", "text-danger");
+      }
     }
   }
 
@@ -370,7 +375,7 @@
     if (!resp.ok) {
       const err = new Error(data.error || `HTTP ${resp.status}: ${resp.statusText}`);
       err.status = resp.status;
-      console.error(`[IsolateX] API error: ${url}`, err, data);
+      if (resp.status !== 404) console.error(`[IsolateX] API error: ${url}`, err, data);
       throw err;
     }
     return data;

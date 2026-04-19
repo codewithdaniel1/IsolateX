@@ -1,12 +1,40 @@
 # IsolateX Setup Guide
 
-This guide takes you from zero to a working IsolateX deployment.
+---
+
+## Part 0 — Plugging in to an existing CTFd (most common)
+
+If you already have CTFd running with challenges, this is all you need:
+
+```bash
+git clone https://github.com/codewithdaniel1/IsolateX
+cd IsolateX
+./setup.sh                          # installs Docker stack + orchestrator
+cp -r ctfd-plugin/ <CTFd>/CTFd/plugins/isolatex/
+pip install httpx                   # inside your CTFd virtualenv/container
+```
+
+Set two environment variables in your CTFd environment:
+```
+ISOLATEX_URL=http://orchestrator:8080
+ISOLATEX_API_KEY=<value from .env>
+```
+
+Restart CTFd. You'll see **IsolateX** in the admin navbar under Plugins.
+
+**Enabling instancing on your challenges:**
+1. Go to **Admin → Plugins → IsolateX**
+2. Every challenge already in CTFd is listed — toggle **On** for any challenge that needs a live instance
+3. Fill in the **Docker Image** (e.g. `myctf/web100:latest`) and **Port** for each enabled challenge
+4. Click **Save** — players immediately see the Launch/Stop/Renew panel on that challenge
+
+Challenges left toggled **Off** are completely unaffected — no panel is shown to players.
 
 ---
 
-## Quickstart — automated setup
+## Part 1 — Fresh install (Docker only, local dev)
 
-The `setup.sh` script installs and configures everything for you. It is safe to re-run — existing tools are updated, not reinstalled.
+The `setup.sh` script installs and configures everything. Safe to re-run — existing tools are updated, not reinstalled.
 
 ```bash
 git clone https://github.com/codewithdaniel1/IsolateX
@@ -20,9 +48,6 @@ cd IsolateX
 
 # + Kata + Firecracker  (Linux + KVM required)
 ./setup.sh --kata-fc
-
-# Everything
-./setup.sh --all
 ```
 
 **What each flag installs:**
@@ -37,14 +62,13 @@ cd IsolateX
 
 After the script finishes:
 1. Go to **http://localhost:8000** and complete the CTFd setup wizard
-2. Go to **Admin → Plugins → IsolateX** to configure TTL and resource tiers
-3. Register your challenges (see Part 2 below)
+2. Go to **Admin → Plugins → IsolateX** to enable instancing per challenge
 
 On first run, `setup.sh` generates a `.env` file with random secrets. Keep this file — it contains your `API_KEY` and `FLAG_HMAC_SECRET`.
 
 ---
 
-## Manual setup — Part 1: Docker only (local dev)
+## Manual setup — Part 2: Docker only (local dev, step by step)
 
 Everything runs in Docker Compose: orchestrator, a Docker worker, CTFd, Postgres, Redis, and Traefik.
 
@@ -67,42 +91,24 @@ Services after startup:
 
 ### Step 3 — Add your challenges to CTFd
 
-In CTFd (Admin → Challenges → New Challenge), create a challenge as usual. Set:
-- **Title**, **Category**, **Description**, **Points** as normal
-- The description can be anything — IsolateX auto-injects the instance panel
+In CTFd (Admin → Challenges → New Challenge), create a challenge as usual.
+The description can be anything — IsolateX automatically injects the instance panel; no special markup needed.
 
-You do not need to put anything special in the description. IsolateX detects challenges by their ID.
+### Step 4 — Enable instancing in the admin UI
 
-### Step 4 — Register challenges with the IsolateX orchestrator
+Go to **CTFd Admin → Plugins → IsolateX**:
 
-For each challenge that needs a live instance, register it with the orchestrator:
+1. Every challenge in CTFd is listed in the table
+2. Toggle **On** for any challenge that needs a live instance per team
+3. Fill in the **Docker Image** and **Port** for each enabled challenge
+4. Optionally set a resource tier and per-challenge TTL override
+5. Click **Save** — players immediately see the Launch/Stop/Renew panel
 
-```bash
-curl -X POST http://localhost:8080/challenges \
-  -H "x-api-key: dev-api-key-change-in-prod" \
-  -H "content-type: application/json" \
-  -d '{
-    "id": "my-challenge",
-    "name": "My Challenge",
-    "runtime": "docker",
-    "image": "my-challenge-image:latest",
-    "port": 80
-  }'
-```
+Challenges left toggled **Off** are completely unaffected — no panel is shown to players.
 
-**The `id` must exactly match the challenge's slug in CTFd** (lowercase, hyphens instead of spaces — e.g. challenge titled "Command Injection" → id `command-injection`).
-
-Fields:
-| Field | Required | Description |
-|---|---|---|
-| `id` | Yes | Slug matching CTFd challenge |
-| `name` | Yes | Display name |
-| `runtime` | Yes | `docker`, `kctf`, or `kata-firecracker` |
-| `image` | Yes | Docker image to run |
-| `port` | Yes | Port the challenge listens on inside the container |
-| `cpu_count` | No | CPU cores (default: 1) |
-| `memory_mb` | No | Memory in MB (default: 512) |
-| `ttl_seconds` | No | Instance lifetime in seconds (default: global default) |
+**Global settings** (top of the page):
+- **Instance TTL** — how long each instance runs before auto-stopping; Renew resets to this duration (default: 30 min)
+- **Default Resource Tier** — fallback for challenges without a per-challenge override
 
 ### Step 5 — Build and load your challenge images
 
@@ -115,28 +121,21 @@ docker build -t my-challenge:latest ./challenges/my-challenge/
 # The worker container shares the host Docker socket, so the image is immediately available
 ```
 
-### Step 6 — Configure settings in the admin UI
-
-Go to **CTFd Admin → Plugins → IsolateX**:
-
-- **Global TTL** — how long each instance runs before auto-stopping; Renew always resets to this duration (default: 30 min)
-- **Per-challenge CPU tier** — 1 / 2 / 4 cores
-- **Per-challenge Memory tier** — 512 MB / 1 GB / 2 GB
-
 Changes to TTL and resources take effect on the next launched instance. Running instances are not affected.
 
-### Step 7 — Test it
+### Step 6 — Test it
 
 1. Log in as a player (or in a private/incognito window).
-2. Open a challenge that is registered with the orchestrator.
+2. Open an instancing-enabled challenge.
 3. The **⚡ Live Instance** panel appears automatically.
 4. Click **Launch** — the instance starts, you get an endpoint URL and countdown timer.
 5. Click the link — it opens your challenge in a new tab.
 6. Test **Restart**, **Renew**, and **Stop**.
+7. Open a challenge that does **not** have instancing enabled — confirm no panel is shown.
 
 ---
 
-## Part 2 — Adding your own CTF challenges
+## Part 3 — Challenge image requirements
 
 ### Challenge image requirements
 
@@ -184,11 +183,11 @@ FLAG = os.environ.get("ISOLATEX_FLAG", "flag{placeholder}")
 | 2 | 2 cores | 1 GB | Pwn, heavier services |
 | 3 | 4 cores | 2 GB | AI, compilation, heavy compute |
 
-You can set these per-challenge in **Admin → Plugins → IsolateX** after registration.
+You can set these per-challenge in **Admin → Plugins → IsolateX**.
 
-### Bulk importing challenges
+### Bulk registering via API (optional)
 
-If you have many challenges, register them in a loop:
+The admin UI is the easiest way to enable challenges. For scripted or CI/CD workflows you can also call the orchestrator API directly:
 
 ```bash
 #!/bin/bash
@@ -210,7 +209,7 @@ register "bof"        "Buffer Overflow"    "myctf-bof:latest"      8888 kata-fir
 
 ---
 
-## Part 3 — Production deployment
+## Part 4 — Production deployment
 
 ### 1. Generate secrets
 

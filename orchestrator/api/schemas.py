@@ -65,6 +65,7 @@ class ChallengeResponse(BaseModel):
     id: str
     name: str
     runtime: RuntimeType
+    image: Optional[str] = None
     cpu_count: float
     memory_mb: int
     port: int
@@ -76,6 +77,9 @@ class ChallengeResponse(BaseModel):
 
 class ChallengeUpdate(BaseModel):
     name: Optional[str] = None
+    runtime: Optional[RuntimeType] = None
+    image: Optional[str] = None
+    port: Optional[int] = None
     cpu_count: Optional[float] = None
     memory_mb: Optional[int] = None
     ttl_seconds: Optional[int] = None
