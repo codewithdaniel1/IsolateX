@@ -214,6 +214,7 @@
         <td class="align-middle">
           <strong>${c.name}</strong>
           <small class="text-muted d-block">${c.category || ""}${c.points ? " · " + c.points + " pts" : ""}</small>
+          ${c.description ? `<small class="text-secondary d-block" style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${c.description.replace(/"/g,'&quot;')}">${c.description}</small>` : ""}
         </td>
         <td class="align-middle">
           <select class="form-select form-select-sm ix-runtime" ${disabledAttr}>

@@ -101,7 +101,7 @@
 
     panel.innerHTML = `
       <div class="card card-body bg-dark text-white mt-3 ix-panel">
-        <h6 class="mb-2 ix-title">⚡ Live Instance</h6>
+        <h6 class="mb-2 ix-title">Live Instance</h6>
         <p class="ix-status text-muted small mb-1">Checking…</p>
         <p class="ix-endpoint mb-1" style="display:none"></p>
         <p class="ix-ttl text-warning small mb-2" style="display:none"></p>

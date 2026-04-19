@@ -258,12 +258,13 @@ def admin_list_ctfd_challenges():
         slug = c.name.lower().replace(" ", "-")
         ix = ix_by_id.get(slug) or ix_by_id.get(str(c.id))
         result.append({
-            "ctfd_id":    c.id,
-            "id":         slug,
-            "name":       c.name,
-            "category":   c.category,
-            "points":     c.value,
-            "enabled":    ix is not None,
+            "ctfd_id":     c.id,
+            "id":          slug,
+            "name":        c.name,
+            "category":    c.category,
+            "points":      c.value,
+            "description": c.description or "",
+            "enabled":     ix is not None,
             "runtime":    ix["runtime"]   if ix else "docker",
             "image":      ix["image"]     if ix else "",
             "port":       ix["port"]      if ix else 8888,
