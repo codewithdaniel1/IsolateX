@@ -384,12 +384,15 @@ def load(app):
     register_admin_plugin_menu_bar("IsolateX", "/isolatex/admin")
     app.register_blueprint(blueprint)
 
+    import time as _time
+    _JS_VER = str(int(_time.time()))
+
     # Inject script into every HTML response
     @app.after_request
     def inject_isolatex_script(response):
         if response.content_type and "text/html" in response.content_type:
             data = response.get_data(as_text=True)
-            script = '<script src="/isolatex/assets/isolatex.js" async></script>'
+            script = f'<script src="/isolatex/assets/isolatex.js?v={_JS_VER}" async></script>'
             # Insert before closing body tag
             if '</body>' in data:
                 data = data.replace('</body>', f'{script}</body>')

@@ -75,13 +75,12 @@
                 <th style="width:36px">On</th>
                 <th>Challenge</th>
                 <th style="width:90px">Runtime</th>
-                <th style="width:220px">Docker Image</th>
                 <th style="width:150px">Tier</th>
                 <th style="width:70px"></th>
               </tr>
             </thead>
             <tbody id="chal-tbody">
-              <tr><td colspan="6" class="text-center text-muted py-4">Loading challenges…</td></tr>
+              <tr><td colspan="5" class="text-center text-muted py-4">Loading challenges…</td></tr>
             </tbody>
           </table>
         </div>
@@ -137,7 +136,7 @@
       allRows = chals;
       renderTable(chals);
     } catch(e) {
-      tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-3">${e.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-3">${e.message}</td></tr>`;
     }
   }
 
@@ -146,7 +145,7 @@
     document.getElementById("chal-count").textContent = chals.length + " challenges";
 
     if (!chals.length) {
-      tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No challenges found in CTFd.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No challenges found in CTFd.</td></tr>`;
       return;
     }
 
@@ -157,7 +156,7 @@
       const rt = runtimeMeta(c.runtime);
       const tierLabel = c.cpu_count ? (TIERS.find(t => t.cpu === c.cpu_count)?.label || "Global default") : "Global default";
       return `
-      <tr data-id="${c.id}" data-enabled="${on}" class="${dimCls}">
+      <tr data-id="${c.id}" data-enabled="${on}" data-image="${c.image || ""}" class="${dimCls}">
         <td class="align-middle text-center">
           <div class="form-check form-switch mb-0 d-flex justify-content-center">
             <input class="form-check-input ix-toggle" type="checkbox" role="switch"
@@ -173,10 +172,6 @@
           <select class="form-select form-select-sm ix-runtime" ${disabledAttr}>
             ${RUNTIMES.map(r => `<option value="${r.value}"${c.runtime === r.value ? " selected" : ""}>${r.label}</option>`).join("")}
           </select>
-        </td>
-        <td class="align-middle">
-          <input type="text" class="form-control form-control-sm ix-image" ${disabledAttr}
-                 value="${c.image || ""}" placeholder="myimage:latest">
         </td>
         <td class="align-middle">
           <select class="form-select form-select-sm ix-tier" ${disabledAttr}>
@@ -234,16 +229,10 @@
     const msg    = row.querySelector(".ix-row-msg");
     const name   = row.querySelector("strong").textContent.trim();
     const runtime = row.querySelector(".ix-runtime").value;
-    const image   = row.querySelector(".ix-image").value.trim();
+    const image   = row.dataset.image || "";
     const tierVal = row.querySelector(".ix-tier").value;
     const tier    = tierVal ? TIERS.find(t => t.cpu === parseFloat(tierVal)) : null;
     const effectiveTier = tier || TIERS[0];
-
-    if (!image) {
-      msg.textContent = "Need image"; msg.className = "ix-row-msg ms-1 small d-block text-warning";
-      setTimeout(() => { msg.textContent = ""; }, 2500);
-      return;
-    }
 
     if (!silent) { msg.textContent = "Saving…"; msg.className = "ix-row-msg ms-1 small d-block text-muted"; }
 
