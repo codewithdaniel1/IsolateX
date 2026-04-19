@@ -22,15 +22,9 @@ class InstanceStatus(str, enum.Enum):
 
 class RuntimeType(str, enum.Enum):
     # Isolation spectrum (weakest → strongest):
-    #   docker  →  kctf  →  kata  →  kata-firecracker
-    #
-    # docker          standard container, weakest isolation
-    # kctf            Kubernetes pod + nsjail
-    # kata            kCTF + Kata Containers (default hypervisor: QEMU)
-    # kata_firecracker kCTF + Kata Containers (Firecracker as Kata hypervisor backend)
+    #   docker  →  kctf  →  kata-firecracker
     docker           = "docker"
     kctf             = "kctf"
-    kata             = "kata"
     kata_firecracker = "kata-firecracker"
 
 

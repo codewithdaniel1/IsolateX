@@ -1,33 +1,40 @@
-# Kata Containers Setup Guide
+# Kata + Firecracker Setup Guide
 
-> **Operator guide** — This document is for infrastructure operators setting up Kata Containers manually.
-> For most users, run `./setup.sh --kata` (QEMU backend) or `./setup.sh --kata-fc` (Firecracker backend) instead — it handles everything on this page automatically.
+> **Operator guide** — This document is for infrastructure operators setting up Kata Containers with the Firecracker backend manually.
+> For most users, run `./setup.sh --kata-fc` instead — it handles everything on this page automatically.
 > See [setup.md](setup.md) for the full quickstart.
 >
-> **Requirements:** Linux host with KVM hardware virtualization enabled (VT-x for Intel, AMD-V for AMD — set in BIOS). Not available on macOS or Windows without a Linux VM. Firecracker additionally requires `/dev/kvm` to be accessible.
+> **Requirements:** Linux host with KVM hardware virtualization enabled (VT-x for Intel, AMD-V for AMD — set in BIOS). Not available on macOS or Windows without a Linux VM. Firecracker requires `/dev/kvm` to be accessible.
 
 Kata Containers runs your Kubernetes pods inside lightweight VMs instead of sharing the host kernel.
-This gives you stronger isolation while keeping the Kubernetes operational model.
+The Firecracker backend replaces QEMU with a minimal microVM, giving the smallest possible attack surface.
 
 ---
 
-## What is Kata?
+## What is Kata + Firecracker?
 
 ```
 Standard pod:
   Kubernetes → containerd → container runtime → shared host kernel
 
-Kata pod:
-  Kubernetes → containerd → Kata runtime → Firecracker/QEMU → guest kernel
+Kata + Firecracker pod:
+  Kubernetes → containerd → Kata runtime → Firecracker microVM → guest kernel
 ```
 
-**Key benefit:** Each pod gets its own kernel. A kernel exploit inside one pod doesn't affect the host or other pods.
+**Key benefits:**
+- Each pod gets its own kernel — kernel exploits inside one pod don't affect the host or other pods.
+- Firecracker has no legacy device emulation, dramatically reducing attack surface vs QEMU.
 
 ---
 
 ## Prerequisites
 
 Your Kubernetes cluster must support nested virtualization or run on a hypervisor that allows `/dev/kvm` access.
+
+Verify KVM is available:
+```bash
+ls -la /dev/kvm
+```
 
 For kind (local dev):
 ```bash
@@ -47,53 +54,101 @@ curl -sfL https://get.k3s.io | sh -s - --disable traefik
 
 ---
 
-## Install Kata
+## Install Kata Containers
 
 ### On your Kubernetes nodes
 
 ```bash
-# Ubuntu 22.04
-sudo apt install -y kata-runtime
+# Via the official Kata install script
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kata-containers/kata-containers/main/utils/kata-manager.sh) install-kata-containers"
 
 # Verify
 kata-runtime --version
 ```
 
-### In the cluster
+---
 
-Create a RuntimeClass so pods can request Kata:
+## Install Firecracker
 
-```yaml
-# infra/kctf/manifests/kata-runtime-class.yaml
-apiVersion: node.k8s.io/v1
-kind: RuntimeClass
-metadata:
-  name: kata
-handler: kata
-```
-
-Apply it:
 ```bash
-kubectl apply -f infra/kctf/manifests/kata-runtime-class.yaml
+FC_LATEST=$(curl -s https://api.github.com/repos/firecracker-microvm/firecracker/releases/latest | grep tag_name | cut -d'"' -f4)
+ARCH=$(uname -m)
+curl -sLO "https://github.com/firecracker-microvm/firecracker/releases/download/${FC_LATEST}/firecracker-${FC_LATEST}-${ARCH}.tgz"
+tar -xzf "firecracker-${FC_LATEST}-${ARCH}.tgz"
+sudo install -m 0755 "release-${FC_LATEST}-${ARCH}/firecracker-${FC_LATEST}-${ARCH}" /usr/local/bin/firecracker
+sudo install -m 0755 "release-${FC_LATEST}-${ARCH}/jailer-${FC_LATEST}-${ARCH}" /usr/local/bin/jailer
+rm -rf "firecracker-${FC_LATEST}-${ARCH}.tgz" "release-${FC_LATEST}-${ARCH}"
+
+# Verify
+firecracker --version
 ```
 
 ---
 
-## Using Kata for a challenge
+## Configure Kata to use Firecracker
 
-In your pod spec, add `runtimeClassName: kata`:
+```bash
+sudo mkdir -p /etc/kata-containers
+sudo tee /etc/kata-containers/configuration-fc.toml > /dev/null <<'TOML'
+[hypervisor.firecracker]
+path = "/usr/local/bin/firecracker"
+jailer_path = "/usr/local/bin/jailer"
+kernel = "/opt/kata/share/kata-containers/vmlinux.container"
+image = "/opt/kata/share/kata-containers/kata-containers.img"
+TOML
+```
+
+---
+
+## Register the RuntimeClass
+
+Create a RuntimeClass so pods can request Kata + Firecracker:
+
+```yaml
+# infra/kctf/manifests/kata-fc-runtime-class.yaml
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata-firecracker
+handler: kata-fc
+```
+
+Apply it:
+```bash
+kubectl apply -f infra/kctf/manifests/kata-fc-runtime-class.yaml
+```
+
+---
+
+## Using Kata-Firecracker for a challenge
+
+When you register a challenge for the `kata-firecracker` runtime:
+
+```json
+{
+  "id": "pwn300",
+  "name": "Pwn 300",
+  "runtime": "kata-firecracker",
+  "image": "ghcr.io/myorg/pwn300:latest",
+  "port": 8888
+}
+```
+
+The worker agent creates a pod with `runtimeClassName: kata-firecracker` automatically.
+
+In your pod spec (for reference — IsolateX handles this):
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  name: web-challenge
+  name: pwn-challenge
   namespace: kctf
 spec:
-  runtimeClassName: kata    # ← use Kata instead of default runtime
+  runtimeClassName: kata-firecracker
   containers:
     - name: challenge
-      image: ghcr.io/osiris/web-challenge:latest
+      image: ghcr.io/myorg/pwn300:latest
       env:
         - name: ISOLATEX_FLAG
           value: flag{...}
@@ -104,52 +159,15 @@ spec:
 
 ---
 
-## IsolateX integration
-
-When you register a challenge for the `kata` runtime, the orchestrator should set:
-
-```json
-{
-  "id": "web300",
-  "name": "Web 300",
-  "runtime": "kata",
-  "image": "ghcr.io/osiris/web300:latest",
-  "port": 8080
-}
-```
-
-The worker agent creates a pod with `runtimeClassName: kata` automatically.
-
----
-
-## Security properties (`kata`)
+## Security properties
 
 | Boundary | What it provides |
 |---|---|
-| Namespace isolation | PID, mount, network (nsjail handles this) |
-| Kernel isolation | Guest kernel (Kata) — kernel exploits trapped in VM |
+| Kernel isolation | Guest kernel (Kata + Firecracker) — kernel exploits trapped in microVM |
+| Minimal attack surface | Firecracker has no legacy device emulation |
 | Network isolation | NetworkPolicy blocks pod-to-pod traffic |
 | Resource limits | LimitRange enforces CPU/memory caps |
 | Capabilities | All dropped, seccomp enforced |
-
----
-
-## `kata-firecracker` vs `kata`
-
-Kata can use multiple hypervisors:
-
-**`kata-firecracker`**
-- Fastest startup
-- Smallest memory footprint
-- Minimal device model
-- Recommended for Kubernetes
-
-**`kata`**
-- Slower startup
-- More device support
-- Better compatibility with complex workloads
-
-Use `kata-firecracker` when you want the stronger VM-backed option above `kata`.
 
 ---
 
@@ -169,17 +187,24 @@ kata-runtime --version
 
 ### `/dev/kvm` permission denied
 
-Ensure the Kata runtime process can access `/dev/kvm`:
 ```bash
 ls -la /dev/kvm
 sudo chown root:kvm /dev/kvm
 sudo chmod 660 /dev/kvm
 ```
 
-### Slow pod startup
+### Firecracker binary not found
 
-If Firecracker isn't available, Kata falls back to QEMU (much slower).
-Verify Firecracker is installed:
+Verify the install:
 ```bash
 firecracker --version
+jailer --version
+which firecracker
+```
+
+### Slow pod startup
+
+Verify the Kata configuration file points to the correct Firecracker binary:
+```bash
+cat /etc/kata-containers/configuration-fc.toml
 ```

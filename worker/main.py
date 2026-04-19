@@ -8,10 +8,10 @@ One worker process = one runtime type.
 Run multiple workers on the same host if you want multiple runtimes there.
 
 Isolation spectrum in docs:
-docker -> kCTF -> kata -> kata-firecracker
+docker -> kCTF -> kata-firecracker
 
 Actual worker runtime values in code:
-docker | kctf | kata | kata-firecracker
+docker | kctf | kata-firecracker
 """
 import asyncio
 import httpx

@@ -25,7 +25,7 @@
            │                │
      ┌─────▼──────┐  ┌──────▼──────────────────┐
      │   Docker   │  │  Kubernetes workers      │
-     │   worker   │  │  kctf / kata / kata-fc   │
+     │   worker   │  │  kctf / kata-fc          │
      └─────┬──────┘  └──────┬──────────────────┘
            │                │
     Docker container    K8s pod (nsjail / Kata VM)
@@ -61,8 +61,7 @@ A FastAPI agent that runs on each host. The orchestrator calls `/launch` and `/d
 |---|---|---|
 | `docker` | `adapters/docker.py` | Runs `docker run` with resource limits and cap-drop |
 | `kctf` | `adapters/kctf.py` | Creates a Kubernetes pod with nsjail + network policy |
-| `kata` | `adapters/kata.py` | Creates a K8s pod with `kata` RuntimeClass (QEMU backend) |
-| `kata-firecracker` | `adapters/kata.py` | Same, with `kata-firecracker` RuntimeClass |
+| `kata-firecracker` | `adapters/kata.py` | Creates a K8s pod with `kata-firecracker` RuntimeClass (Kata + Firecracker) |
 
 Workers advertise their runtime type. The orchestrator only sends `docker` challenges to Docker workers, `kata` challenges to Kata workers, etc.
 

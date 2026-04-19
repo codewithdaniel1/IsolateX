@@ -36,15 +36,6 @@ Medium isolation via Linux namespaces + nsjail.
 - Ephemeral pod storage only — no PersistentVolumeClaims
 - **Recommended for**: web challenges, reversing, crypto, moderate pwn
 
-### Kata Containers — QEMU backend (`kata`)
-
-Strong isolation via hardware virtualization.
-
-- Each pod runs inside a lightweight VM with its own guest kernel (QEMU hypervisor)
-- A kernel exploit inside the guest does not compromise the host
-- Kubernetes NetworkPolicy still applies for network isolation
-- **Recommended for**: pwn, RCE challenges
-
 ### Kata Containers — Firecracker backend (`kata-firecracker`)
 
 Strongest isolation — Firecracker microVM instead of QEMU.
@@ -131,7 +122,7 @@ If a player is suspected of breaking out of their instance:
 
 1. `DELETE /instances/<id>` — immediately destroy the instance
 2. Review worker logs for unusual syscalls or outbound network activity
-3. For Kata/Kata-Firecracker: inspect pod logs, node runtime logs, and the RuntimeClass used
+3. For Kata-Firecracker: inspect pod logs, node runtime logs, and the RuntimeClass used
 4. For Docker: `docker inspect <container>` and check host process list
 5. For kCTF: `kubectl describe pod <name>` and audit logs
 6. Rotate `FLAG_HMAC_SECRET` and `API_KEY` if the control plane may have been reached

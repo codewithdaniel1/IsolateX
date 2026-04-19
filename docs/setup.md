@@ -18,10 +18,7 @@ cd IsolateX
 # Docker + Kubernetes + kCTF  (Linux only)
 ./setup.sh --kctf
 
-# + Kata Containers with QEMU backend  (Linux + KVM required)
-./setup.sh --kata
-
-# + Kata with Firecracker backend  (Linux + KVM required)
+# + Kata + Firecracker  (Linux + KVM required)
 ./setup.sh --kata-fc
 
 # Everything
@@ -34,10 +31,9 @@ cd IsolateX
 |---|---|---|
 | *(none)* | Docker, Docker Compose | `docker` |
 | `--kctf` | + kubectl, k3s, kCTF namespace + NetworkPolicy | `docker`, `kctf` |
-| `--kata` | + Kata Containers (QEMU backend), `kata` RuntimeClass | + `kata` |
-| `--kata-fc` | + Firecracker, `kata-firecracker` RuntimeClass | + `kata-firecracker` |
+| `--kata-fc` | + Kata Containers, Firecracker, `kata-firecracker` RuntimeClass | + `kata-firecracker` |
 
-> **macOS / Windows:** Only `docker` runtime works locally. Kubernetes-based runtimes (`kctf`, `kata`, `kata-firecracker`) require a **Linux host** with **KVM hardware virtualization** enabled (VT-x for Intel, AMD-V for AMD — enable in BIOS). For production, use a Linux server or cloud VM (AWS, GCP, DigitalOcean, Hetzner).
+> **macOS / Windows:** Only `docker` runtime works locally. Kubernetes-based runtimes (`kctf`, `kata-firecracker`) require a **Linux host** with **KVM hardware virtualization** enabled (VT-x for Intel, AMD-V for AMD — enable in BIOS). For production, use a Linux server or cloud VM (AWS, GCP, DigitalOcean, Hetzner).
 
 After the script finishes:
 1. Go to **http://localhost:8000** and complete the CTFd setup wizard
@@ -101,7 +97,7 @@ Fields:
 |---|---|---|
 | `id` | Yes | Slug matching CTFd challenge |
 | `name` | Yes | Display name |
-| `runtime` | Yes | `docker`, `kctf`, `kata`, or `kata-firecracker` |
+| `runtime` | Yes | `docker`, `kctf`, or `kata-firecracker` |
 | `image` | Yes | Docker image to run |
 | `port` | Yes | Port the challenge listens on inside the container |
 | `cpu_count` | No | CPU cores (default: 1) |
@@ -176,7 +172,7 @@ FLAG = os.environ.get("ISOLATEX_FLAG", "flag{placeholder}")
 | Static web (no shell) | `docker` |
 | Web with server-side code | `docker` or `kctf` |
 | Reversing, crypto | `docker` or `kctf` |
-| Binary exploitation (pwn) | `kata` or `kata-firecracker` |
+| Binary exploitation (pwn) | `kata-firecracker` |
 | RCE / arbitrary code execution | `kata-firecracker` |
 | Kernel challenges | `kata-firecracker` |
 
@@ -210,7 +206,7 @@ register() {
 
 register "cmdinj"     "Command Injection"  "myctf-cmdinj:latest"    80
 register "sqlinj"     "SQL Injection"      "myctf-sqlinj:latest"    80
-register "bof"        "Buffer Overflow"    "myctf-bof:latest"      8888 kata
+register "bof"        "Buffer Overflow"    "myctf-bof:latest"      8888 kata-firecracker
 ```
 
 ---
@@ -265,7 +261,7 @@ kubectl apply -f infra/kctf/manifests/
 
 ### 4. Deploy workers
 
-For Kubernetes-based runtimes, workers run as pods on cluster nodes. See [kctf-setup.md](kctf-setup.md) for cluster setup.
+For Kubernetes-based runtimes, workers run as pods on cluster nodes. See [kctf-setup.md](kctf-setup.md) for cluster setup and [kata-setup.md](kata-setup.md) for Kata + Firecracker setup.
 
 For Docker runtime (no Kubernetes needed):
 ```bash

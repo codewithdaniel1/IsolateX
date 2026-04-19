@@ -1,14 +1,10 @@
 """
-Kata Containers adapter (via Kubernetes RuntimeClass).
+Kata Containers + Firecracker adapter (via Kubernetes RuntimeClass).
 
-Handles both kata and kata-firecracker runtimes. The only difference between
-them is which Kubernetes RuntimeClass is selected:
+runtime="kata-firecracker" → RuntimeClass "kata-firecracker"  (Firecracker as Kata backend)
 
-  runtime="kata"             → RuntimeClass "kata"  (default hypervisor: QEMU)
-  runtime="kata-firecracker" → RuntimeClass "kata-firecracker"  (Firecracker as Kata backend)
-
-In both cases Kubernetes is the orchestrator and Kata creates a lightweight VM
-per pod. The hypervisor is a Kata configuration detail, not an IsolateX detail.
+Kubernetes is the orchestrator; Kata creates a lightweight VM per pod with
+Firecracker as the hypervisor backend.
 
 See docs/kata-setup.md for cluster setup.
 """
@@ -24,16 +20,13 @@ log = structlog.get_logger()
 
 KCTF_NAMESPACE = settings.kctf_namespace
 
-# RuntimeClass names must exist in the cluster before launching instances.
-# See docs/kata-setup.md for how to create them.
 RUNTIME_CLASS_MAP = {
-    "kata":             "kata",
     "kata-firecracker": "kata-firecracker",
 }
 
 
 class KataAdapter(RuntimeAdapter):
-    def __init__(self, runtime: str = "kata"):
+    def __init__(self, runtime: str = "kata-firecracker"):
         self._runtime_class = RUNTIME_CLASS_MAP.get(runtime, "kata")
         self._instances: dict[str, dict] = {}
         self._load_kube_config()

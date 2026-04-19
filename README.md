@@ -22,15 +22,14 @@ IsolateX gives every team their own isolated challenge environment — players c
 |---|---|---|---|
 | `docker` | Docker (runc) | Basic | Web, crypto, reversing — local dev |
 | `kctf` | Kubernetes pod + nsjail | Medium | Web, pwn with moderate risk |
-| `kata` | Kubernetes + Kata (QEMU backend) | Strong | Pwn, RCE challenges |
-| `kata-firecracker` | Kubernetes + Kata (Firecracker backend) | Strongest | Kernel pwn, AI code execution |
+| `kata-firecracker` | Kubernetes + Kata (Firecracker backend) | Strongest | Kernel pwn, AI code execution, RCE |
 
-> **macOS / Windows:** Only `docker` runtime is available locally. `kctf`, `kata`, and `kata-firecracker` require a Linux host with KVM hardware virtualization (VT-x / AMD-V enabled in BIOS).
+> **macOS / Windows:** Only `docker` runtime is available locally. `kctf` and `kata-firecracker` require a Linux host with KVM hardware virtualization (VT-x / AMD-V enabled in BIOS).
 
 **Choosing a runtime:**
 - Start with `docker` for local dev — no Kubernetes needed.
 - Use `kctf` for most production challenges.
-- Use `kata` or `kata-firecracker` for anything where a player gets shell access or can trigger arbitrary code execution.
+- Use `kata-firecracker` for anything where a player gets shell access or can trigger arbitrary code execution.
 
 ---
 
@@ -42,7 +41,7 @@ Set per-challenge in the admin panel (Plugins → IsolateX):
 |---|---|---|---|---|
 | Tier 1 | 0.5 cores | 256 MB | Docker | Static web, trivial challenges |
 | Tier 2 | 1 core | 512 MB | kCTF | Typical web / reversing |
-| Tier 3 | 2 cores | 1 GB | Kata | Pwn, heavier web |
+| Tier 3 | 2 cores | 1 GB | kCTF | Pwn, heavier web |
 | Tier 4 | 4 cores | 2 GB | Kata-FC | AI, compilation, kernel challenges |
 
 ---
@@ -58,9 +57,6 @@ cd IsolateX
 
 # Docker + Kubernetes + kCTF  (Linux only)
 ./setup.sh --kctf
-
-# + Kata Containers / QEMU  (Linux + KVM required)
-./setup.sh --kata
 
 # + Kata + Firecracker  (Linux + KVM required)
 ./setup.sh --kata-fc
@@ -80,14 +76,14 @@ After the script finishes:
 
 ## Requirements
 
-| Requirement | Docker runtime | kCTF | Kata | Kata-FC |
-|---|---|---|---|---|
-| Docker Desktop / Docker Engine | ✅ | ✅ | ✅ | ✅ |
-| Linux host | | ✅ | ✅ | ✅ |
-| KVM (VT-x / AMD-V in BIOS) | | | ✅ | ✅ |
-| kubectl + k3s | | ✅ | ✅ | ✅ |
-| Kata Containers | | | ✅ | ✅ |
-| Firecracker | | | | ✅ |
+| Requirement | Docker runtime | kCTF | Kata-FC |
+|---|---|---|---|
+| Docker Desktop / Docker Engine | ✅ | ✅ | ✅ |
+| Linux host | | ✅ | ✅ |
+| KVM (VT-x / AMD-V in BIOS) | | | ✅ |
+| kubectl + k3s | | ✅ | ✅ |
+| Kata Containers | | | ✅ |
+| Firecracker | | | ✅ |
 
 `setup.sh` installs all of these for you.
 
@@ -102,7 +98,7 @@ After the script finishes:
 | [docs/api-reference.md](docs/api-reference.md) | Orchestrator REST API |
 | [docs/security-model.md](docs/security-model.md) | Isolation model and threat model |
 | [docs/kctf-setup.md](docs/kctf-setup.md) | *(Operators)* Kubernetes / kCTF cluster setup details |
-| [docs/kata-setup.md](docs/kata-setup.md) | *(Operators)* Kata Containers setup details |
+| [docs/kata-setup.md](docs/kata-setup.md) | *(Operators)* Kata + Firecracker setup details |
 
 ---
 
@@ -120,7 +116,7 @@ worker/               Worker agent (runs per host / per runtime)
   adapters/
     docker.py         Docker runtime
     kctf.py           Kubernetes + nsjail runtime
-    kata.py           Kata Containers runtime (kata + kata-firecracker)
+    kata.py           Kata + Firecracker runtime
 
 ctfd-plugin/          CTFd integration
   __init__.py         Flask blueprint + admin UI routes
@@ -143,6 +139,6 @@ docs/                 Documentation
 - **Per-team flags** — HMAC(secret + team\_id + challenge\_id + instance\_id + salt); sharing a flag helps nobody
 - **Auto-cleanup** — TTL reaper runs every 30s, destroys expired instances
 - **Network isolation** — containers on an isolated bridge with ICC disabled; Kubernetes NetworkPolicy default-deny in production
-- **Kata isolation** — each pod runs inside its own VM with its own kernel
+- **Kata-FC isolation** — each pod runs inside its own Firecracker microVM with its own kernel
 
 Full details → [docs/security-model.md](docs/security-model.md)

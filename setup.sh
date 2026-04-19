@@ -6,7 +6,6 @@
 # Usage:
 #   ./setup.sh              # Docker runtime only (local dev)
 #   ./setup.sh --kctf       # Docker + Kubernetes + kCTF
-#   ./setup.sh --kata       # Docker + Kubernetes + kCTF + Kata Containers
 #   ./setup.sh --kata-fc    # Docker + Kubernetes + kCTF + Kata + Firecracker
 #   ./setup.sh --all        # Everything
 
@@ -21,15 +20,13 @@ error()   { echo -e "${RED}[IsolateX]${NC} $*"; exit 1; }
 
 # ── Args ──────────────────────────────────────────────────────────────────────
 INSTALL_KCTF=false
-INSTALL_KATA=false
 INSTALL_KATA_FC=false
 
 for arg in "$@"; do
   case $arg in
     --kctf)    INSTALL_KCTF=true ;;
-    --kata)    INSTALL_KCTF=true; INSTALL_KATA=true ;;
-    --kata-fc) INSTALL_KCTF=true; INSTALL_KATA=true; INSTALL_KATA_FC=true ;;
-    --all)     INSTALL_KCTF=true; INSTALL_KATA=true; INSTALL_KATA_FC=true ;;
+    --kata-fc) INSTALL_KCTF=true; INSTALL_KATA_FC=true ;;
+    --all)     INSTALL_KCTF=true; INSTALL_KATA_FC=true ;;
   esac
 done
 
@@ -224,40 +221,7 @@ EOF
   success "kCTF namespace ready."
 }
 
-# ── 5. Kata Containers ────────────────────────────────────────────────────────
-install_or_update_kata() {
-  info "Checking Kata Containers..."
-
-  if command -v kata-runtime &>/dev/null; then
-    CURRENT=$(kata-runtime --version 2>/dev/null | head -1)
-    info "Kata found (${CURRENT}) — updating..."
-  else
-    info "Installing Kata Containers..."
-  fi
-
-  case "$OS" in
-    Linux)
-      # Kata Containers 3.x via official install script
-      bash -c "$(curl -fsSL https://raw.githubusercontent.com/kata-containers/kata-containers/main/utils/kata-manager.sh) install-kata-containers"
-
-      # Register RuntimeClass for kata (QEMU backend)
-      cat <<'EOF' | kubectl apply -f -
-apiVersion: node.k8s.io/v1
-kind: RuntimeClass
-metadata:
-  name: kata
-handler: kata-qemu
-EOF
-      success "Kata (QEMU) RuntimeClass registered."
-      ;;
-    Darwin)
-      warn "Kata Containers requires a Linux host. On macOS, use a Linux VM or cloud instance."
-      warn "See: https://github.com/kata-containers/kata-containers/blob/main/docs/install/README.md"
-      ;;
-  esac
-}
-
-# ── 6. Kata + Firecracker ─────────────────────────────────────────────────────
+# ── 5. Kata + Firecracker ─────────────────────────────────────────────────────
 install_or_update_kata_firecracker() {
   info "Setting up Kata + Firecracker backend..."
 
@@ -265,8 +229,17 @@ install_or_update_kata_firecracker() {
     Linux)
       # Check KVM availability
       if ! ls /dev/kvm &>/dev/null; then
-        error "/dev/kvm not found. Firecracker requires KVM hardware virtualization. Enable VT-x/AMD-V in BIOS."
+        error "/dev/kvm not found. Kata + Firecracker requires KVM hardware virtualization. Enable VT-x/AMD-V in BIOS."
       fi
+
+      # Install Kata Containers
+      if command -v kata-runtime &>/dev/null; then
+        CURRENT=$(kata-runtime --version 2>/dev/null | head -1)
+        info "Kata found (${CURRENT}) — updating..."
+      else
+        info "Installing Kata Containers..."
+      fi
+      bash -c "$(curl -fsSL https://raw.githubusercontent.com/kata-containers/kata-containers/main/utils/kata-manager.sh) install-kata-containers"
 
       # Install Firecracker
       if command -v firecracker &>/dev/null; then
@@ -362,10 +335,6 @@ if $INSTALL_KCTF; then
   setup_kctf_namespace
 fi
 
-if $INSTALL_KATA; then
-  install_or_update_kata
-fi
-
 if $INSTALL_KATA_FC; then
   install_or_update_kata_firecracker
 fi
@@ -391,8 +360,8 @@ if $INSTALL_KCTF; then
   echo "    KCTF_NAMESPACE=kctf"
   echo ""
 fi
-if $INSTALL_KATA; then
-  echo "  Kata RuntimeClasses installed:"
+if $INSTALL_KATA_FC; then
+  echo "  Kata + Firecracker RuntimeClass installed:"
   kubectl get runtimeclass 2>/dev/null || true
   echo ""
 fi
