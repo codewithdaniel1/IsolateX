@@ -215,6 +215,8 @@
     disableAll(ctx);
     show(ctx.btnLaunch);
     setStatus(ctx, "Starting… (this can take a few seconds)");
+    // Force a repaint so the "Starting…" text renders before the POST blocks
+    await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
     try {
       await api(ctx.cid, "POST");
     } catch (e) {
