@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field
-from typing import Literal
 import secrets
 
 
@@ -32,7 +31,6 @@ class Settings(BaseSettings):
     worker_heartbeat_timeout_seconds: int = 60
 
     # Gateway
-    gateway_type: Literal["traefik", "nginx"] = "traefik"
     base_domain: str = "ctf.osiris.sh"
     tls_enabled: bool = True
 

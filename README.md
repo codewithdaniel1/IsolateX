@@ -60,12 +60,10 @@ cp -r ctfd-plugin/ <path-to-CTFd>/CTFd/plugins/isolatex/
 ```
 
 Restart CTFd. Then:
-1. Go to **Admin → Plugins → IsolateX**
-2. You'll see every challenge already in CTFd — just toggle **On** for the ones that need live instances
-3. Set the Docker image and port for each enabled challenge and click **Save**
-4. Done — players see the Launch button immediately on those challenges
-
-Challenges without instancing enabled are completely unaffected — no panel is shown.
+1. Run `./scripts/import-recruit-chals.sh` to auto-register your challenges with the orchestrator
+2. Go to **Admin → Plugins → IsolateX** — only registered (instanced) challenges appear
+3. Adjust runtime or tier per challenge if needed and click **Save**
+4. Done — players see the Launch button on registered challenges; all others are unaffected
 
 ### Starting from scratch
 
@@ -143,7 +141,6 @@ ctfd-plugin/          CTFd integration
 
 gateway/
   traefik/            Traefik HTTP provider config
-  nginx/              Nginx alternative
 
 docs/                 Documentation
 ```

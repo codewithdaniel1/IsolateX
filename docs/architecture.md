@@ -20,7 +20,7 @@
 │  TTL reaper      Auto-destroy on expiry (30s)   │
 │  Worker picker   Least-loaded scheduler         │
 │  Flag derivation HMAC per team+challenge        │
-│  Router          Traefik / Nginx config update  │
+│  Router          Traefik route registration     │
 └──────────┬────────────────┬─────────────────────┘
            │                │
      ┌─────▼──────┐  ┌──────▼──────────────────┐
@@ -82,7 +82,7 @@ Workers advertise their runtime type. The orchestrator only sends `docker` chall
 5.  Worker receives POST /launch → runs container / creates pod
 6.  Worker returns { port: <host_port> }
 7.  Orchestrator:
-    a. Registers route with Traefik (or uses localhost:<port> for local dev)
+    a. Registers route subdomain via Traefik (or uses localhost:<port> for local dev)
     b. Updates Instance: status=running, endpoint=<url>
 8.  isolatex.js polls GET /isolatex/instance/<challenge_id> every 5s
 9.  Status=running → renders endpoint link + countdown timer

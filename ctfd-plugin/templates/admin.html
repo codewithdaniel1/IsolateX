@@ -15,7 +15,7 @@
     <div class="col-12">
       <div class="card border-0 bg-light">
         <div class="card-body">
-          <h6 class="card-title mb-3">Setup guide</h6>
+          <h6 class="card-title mb-3">Runtime guide</h6>
           <div class="row g-3">
             <div class="col-md-4">
               <div class="card h-100 border-primary">
@@ -48,7 +48,10 @@
               </div>
             </div>
           </div>
-          <p class="small text-muted mt-3 mb-0">Instance TTL is <strong>2 hours</strong>. Players can click <strong>Renew</strong> to reset the timer at any time.</p>
+          <p class="small text-muted mt-3 mb-0">
+            Only challenges registered with the orchestrator are shown here. Instance TTL is <strong>2 hours</strong> — players can click <strong>Renew</strong> to reset the timer.
+            To add a challenge to IsolateX, register it via <code>scripts/import-recruit-chals.sh</code> or the orchestrator API.
+          </p>
         </div>
       </div>
     </div>
@@ -60,8 +63,8 @@
       <div class="card">
         <div class="card-header d-flex align-items-center justify-content-between">
           <div>
-            <strong>Challenges</strong>
-            <small class="text-muted ms-2">Toggle instancing on/off per challenge. TTL is always 2 hours.</small>
+            <strong>Instanced Challenges</strong>
+            <small class="text-muted ms-2">Challenges registered with the IsolateX orchestrator.</small>
           </div>
           <div class="d-flex align-items-center gap-2">
             <input type="text" class="form-control form-control-sm" id="search-box" placeholder="Filter…" style="width:180px">
@@ -72,7 +75,6 @@
           <table class="table table-sm table-hover mb-0" id="chal-table">
             <thead class="table-dark">
               <tr>
-                <th style="width:36px">On</th>
                 <th>Challenge</th>
                 <th style="width:90px">Runtime</th>
                 <th style="width:150px">Tier</th>
@@ -80,14 +82,13 @@
               </tr>
             </thead>
             <tbody id="chal-tbody">
-              <tr><td colspan="5" class="text-center text-muted py-4">Loading challenges…</td></tr>
+              <tr><td colspan="4" class="text-center text-muted py-4">Loading…</td></tr>
             </tbody>
           </table>
         </div>
       </div>
     </div>
   </div>
-
 
 </div>
 
@@ -96,7 +97,7 @@
   "use strict";
   const NONCE = window.init?.csrfNonce || "";
 
-  const TTL_SECONDS = 7200; // fixed 2-hour TTL
+  const TTL_SECONDS = 7200;
 
   const TIERS = [
     { cpu: 1,   mem: 512,  label: "T1 — 1 core / 512 MB"  },
@@ -110,8 +111,7 @@
     { value: "kata-firecracker", label: "Kata-FC", badge: "bg-danger"  },
   ];
 
-  function tierFromCpu(cpu) { return TIERS.find(t => t.cpu === cpu) || TIERS[0]; }
-  function runtimeMeta(v)   { return RUNTIMES.find(r => r.value === v) || RUNTIMES[0]; }
+  function runtimeMeta(v) { return RUNTIMES.find(r => r.value === v) || RUNTIMES[0]; }
 
   async function api(url, method, body) {
     const r = await fetch(url, {
@@ -128,7 +128,6 @@
 
   let allRows = [];
 
-  // ── challenge table ─────────────────────────────────────────────────────────
   async function loadChallenges() {
     const tbody = document.getElementById("chal-tbody");
     try {
@@ -136,112 +135,67 @@
       allRows = chals;
       renderTable(chals);
     } catch(e) {
-      tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-3">${e.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-3">${e.message}</td></tr>`;
     }
   }
 
   function renderTable(chals) {
     const tbody = document.getElementById("chal-tbody");
-    document.getElementById("chal-count").textContent = chals.length + " challenges";
+    document.getElementById("chal-count").textContent = chals.length + " instanced";
 
     if (!chals.length) {
-      tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No challenges found in CTFd.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">No instanced challenges registered yet. Use <code>scripts/import-recruit-chals.sh</code> to register challenges.</td></tr>`;
       return;
     }
 
     tbody.innerHTML = chals.map(c => {
-      const on = c.enabled;
-      const dimCls = on ? "" : "opacity-50";
-      const disabledAttr = on ? "" : "disabled";
       const rt = runtimeMeta(c.runtime);
-      const tierLabel = c.cpu_count ? (TIERS.find(t => t.cpu === c.cpu_count)?.label || "Global default") : "Global default";
       return `
-      <tr data-id="${c.id}" data-enabled="${on}" data-image="${c.image || ""}" class="${dimCls}">
-        <td class="align-middle text-center">
-          <div class="form-check form-switch mb-0 d-flex justify-content-center">
-            <input class="form-check-input ix-toggle" type="checkbox" role="switch"
-                   id="toggle-${c.id}" ${on ? "checked" : ""} style="cursor:pointer">
-          </div>
-        </td>
+      <tr data-id="${c.id}" data-image="${c.image || ""}">
         <td class="align-middle">
           <strong>${c.name}</strong>
           <small class="text-muted d-block">${c.category || ""}${c.points ? " · " + c.points + " pts" : ""}</small>
-          ${c.description ? `<small class="text-secondary d-block" style="max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${c.description.replace(/"/g,'&quot;')}">${c.description}</small>` : ""}
+          ${c.description ? `<small class="text-secondary d-block" style="max-width:400px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${c.description.replace(/"/g,'&quot;')}">${c.description}</small>` : ""}
         </td>
         <td class="align-middle">
-          <select class="form-select form-select-sm ix-runtime" ${disabledAttr}>
+          <select class="form-select form-select-sm ix-runtime">
             ${RUNTIMES.map(r => `<option value="${r.value}"${c.runtime === r.value ? " selected" : ""}>${r.label}</option>`).join("")}
           </select>
         </td>
         <td class="align-middle">
-          <select class="form-select form-select-sm ix-tier" ${disabledAttr}>
-            <option value="">Global default</option>
+          <select class="form-select form-select-sm ix-tier">
             ${TIERS.map(t => `<option value="${t.cpu}"${c.cpu_count === t.cpu ? " selected" : ""}>${t.label}</option>`).join("")}
           </select>
         </td>
         <td class="align-middle">
-          <button class="btn btn-sm btn-primary ix-save" ${disabledAttr} data-id="${c.id}">Save</button>
+          <button class="btn btn-sm btn-primary ix-save" data-id="${c.id}">Save</button>
           <span class="ix-row-msg ms-1 small d-block" style="min-width:50px"></span>
         </td>
       </tr>`;
     }).join("");
-
-    tbody.querySelectorAll(".ix-toggle").forEach(tog => {
-      tog.addEventListener("change", () => handleToggle(tog));
-    });
 
     tbody.querySelectorAll(".ix-save").forEach(btn => {
       btn.addEventListener("click", () => saveRow(btn.dataset.id));
     });
   }
 
-  async function handleToggle(tog) {
-    const row = tog.closest("tr");
-    const id  = row.dataset.id;
-    const on  = tog.checked;
-    const msg = row.querySelector(".ix-row-msg");
-
-    row.dataset.enabled = on;
-    row.classList.toggle("opacity-50", !on);
-    row.querySelectorAll("input, select, button.ix-save").forEach(el => { el.disabled = !on; });
-    tog.disabled = false;
-
-    if (!on) {
-      msg.textContent = "…"; msg.className = "ix-row-msg ms-1 small d-block text-muted";
-      try {
-        await api(`/isolatex/admin/challenges/${id}/disable`, "POST");
-        msg.textContent = "Off."; msg.className = "ix-row-msg ms-1 small d-block text-muted";
-      } catch(e) {
-        msg.textContent = "Error"; msg.className = "ix-row-msg ms-1 small d-block text-danger";
-        tog.checked = true;
-        row.classList.remove("opacity-50");
-        row.querySelectorAll("input, select, button.ix-save").forEach(el => { el.disabled = false; });
-        tog.disabled = false;
-      }
-    } else {
-      await saveRow(id, true);
-    }
-    setTimeout(() => { msg.textContent = ""; }, 2500);
-  }
-
-  async function saveRow(id, silent) {
-    const row    = document.querySelector(`tr[data-id="${id}"]`);
-    const msg    = row.querySelector(".ix-row-msg");
-    const name   = row.querySelector("strong").textContent.trim();
+  async function saveRow(id) {
+    const row     = document.querySelector(`tr[data-id="${id}"]`);
+    const msg     = row.querySelector(".ix-row-msg");
+    const name    = row.querySelector("strong").textContent.trim();
     const runtime = row.querySelector(".ix-runtime").value;
     const image   = row.dataset.image || "";
     const tierVal = row.querySelector(".ix-tier").value;
-    const tier    = tierVal ? TIERS.find(t => t.cpu === parseFloat(tierVal)) : null;
-    const effectiveTier = tier || TIERS[0];
+    const tier    = TIERS.find(t => t.cpu === parseFloat(tierVal)) || TIERS[0];
 
-    if (!silent) { msg.textContent = "Saving…"; msg.className = "ix-row-msg ms-1 small d-block text-muted"; }
+    msg.textContent = "Saving…"; msg.className = "ix-row-msg ms-1 small d-block text-muted";
 
     try {
       await api(`/isolatex/admin/challenges/${id}`, "POST", {
         id, name, runtime, image,
         port:        8080,
-        cpu_count:   effectiveTier.cpu,
-        memory_mb:   effectiveTier.mem,
+        cpu_count:   tier.cpu,
+        memory_mb:   tier.mem,
         ttl_seconds: TTL_SECONDS,
       });
       msg.textContent = "Saved ✓"; msg.className = "ix-row-msg ms-1 small d-block text-success";
@@ -252,7 +206,6 @@
     setTimeout(() => { msg.textContent = ""; }, 2500);
   }
 
-  // ── search filter ───────────────────────────────────────────────────────────
   document.getElementById("search-box").addEventListener("input", function () {
     const q = this.value.toLowerCase();
     const filtered = q

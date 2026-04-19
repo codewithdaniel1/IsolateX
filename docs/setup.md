@@ -23,12 +23,10 @@ ISOLATEX_API_KEY=<value from .env>
 Restart CTFd. You'll see **IsolateX** in the admin navbar under Plugins.
 
 **Enabling instancing on your challenges:**
-1. Go to **Admin → Plugins → IsolateX**
-2. Every challenge already in CTFd is listed — toggle **On** for any challenge that needs a live instance
-3. Fill in the **Docker Image** (e.g. `myctf/web100:latest`) and **Port** for each enabled challenge
-4. Click **Save** — players immediately see the Launch/Stop/Renew panel on that challenge
-
-Challenges left toggled **Off** are completely unaffected — no panel is shown to players.
+1. Run `scripts/import-recruit-chals.sh` to auto-import and register challenges (or register manually via the orchestrator API)
+2. Go to **Admin → Plugins → IsolateX** — only challenges registered with the orchestrator appear here
+3. Adjust the runtime tier per challenge if needed and click **Save**
+4. Players immediately see the Launch/Stop/Renew panel on registered challenges; all other challenges are completely unaffected
 
 ---
 
@@ -94,21 +92,21 @@ Services after startup:
 In CTFd (Admin → Challenges → New Challenge), create a challenge as usual.
 The description can be anything — IsolateX automatically injects the instance panel; no special markup needed.
 
-### Step 4 — Enable instancing in the admin UI
+### Step 4 — Register challenges and check the admin UI
 
-Go to **CTFd Admin → Plugins → IsolateX**:
+Register challenges with the orchestrator (the import script handles this automatically):
 
-1. Every challenge in CTFd is listed in the table
-2. Toggle **On** for any challenge that needs a live instance per team
-3. Fill in the **Docker Image** and **Port** for each enabled challenge
-4. Optionally set a resource tier and per-challenge TTL override
-5. Click **Save** — players immediately see the Launch/Stop/Renew panel
+```bash
+./scripts/import-recruit-chals.sh
+```
 
-Challenges left toggled **Off** are completely unaffected — no panel is shown to players.
+Then go to **CTFd Admin → Plugins → IsolateX**:
 
-**Global settings** (top of the page):
-- **Instance TTL** — how long each instance runs before auto-stopping; Renew resets to this duration (default: 30 min)
-- **Default Resource Tier** — fallback for challenges without a per-challenge override
+1. Only challenges registered with the orchestrator appear — no toggling needed
+2. Adjust the runtime or resource tier per challenge if needed and click **Save**
+3. Players immediately see the Launch/Stop/Renew panel on registered challenges
+
+Challenges not registered with the orchestrator are unaffected — no panel is shown to players.
 
 ### Step 5 — Build and load your challenge images
 
@@ -127,7 +125,7 @@ Changes to TTL and resources take effect on the next launched instance. Running 
 
 1. Log in as a player (or in a private/incognito window).
 2. Open an instancing-enabled challenge.
-3. The **⚡ Live Instance** panel appears automatically.
+3. The **Live Instance** panel appears automatically.
 4. Click **Launch** — the instance starts, you get an endpoint URL and countdown timer.
 5. Click the link — it opens your challenge in a new tab.
 6. Test **Restart**, **Renew**, and **Stop**.
@@ -285,9 +283,9 @@ ISOLATEX_API_KEY=<API_KEY>
 
 Restart CTFd. You will see **[IsolateX] plugin loaded** in the CTFd logs.
 
-### 6. Configure the gateway
+### 6. Configure Traefik
 
-For production, Traefik handles per-instance routing. Edit `gateway/traefik/traefik.yml` with your domain, then:
+Traefik is bundled in `docker-compose.yml` and starts automatically. For production, edit `gateway/traefik/traefik.yml` with your domain and TLS email, then:
 
 ```bash
 kubectl apply -f gateway/traefik/

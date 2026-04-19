@@ -240,14 +240,16 @@ def admin_save_config():
 @blueprint.route("/admin/ctfd-challenges", methods=["GET"])
 @admins_only
 def admin_list_ctfd_challenges():
-    """Return all CTFd challenges with their IsolateX registration status merged in."""
+    """Return only challenges registered with IsolateX, enriched with CTFd metadata."""
     try:
-        # Fetch IsolateX-registered challenges
         ix_resp = httpx.get(f"{ORCHESTRATOR_URL}/challenges", headers=_headers(), timeout=10.0)
         ix_resp.raise_for_status()
-        ix_by_id = {c["id"]: c for c in ix_resp.json()}
-    except Exception:
-        ix_by_id = {}
+        ix_challenges = ix_resp.json()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    if not ix_challenges:
+        return jsonify([])
 
     ctfd_chals = Challenges.query.order_by(
         Challenges.category, Challenges.value, Challenges.id
@@ -258,32 +260,40 @@ def admin_list_ctfd_challenges():
     def _strip_html(s):
         return _re.sub(r"<[^>]+>", "", s or "").strip()
 
-    result = []
+    # Build a lookup from slug/name → CTFd challenge
+    ctfd_by_slug = {}
     for c in ctfd_chals:
-        slug = c.name.lower().replace(" ", "-")
-        # Match against slug, exact name, or any registered id that starts with the slug
-        ix = ix_by_id.get(slug) or ix_by_id.get(c.name.lower())
-        if not ix:
-            # fallback: find any ix entry whose id the slug starts with or vice versa
-            for k, v in ix_by_id.items():
-                if k == slug or slug.startswith(k) or k.startswith(slug):
-                    ix = v
+        slug = _re.sub(r"[^a-z0-9]+", "-", c.name.lower()).strip("-")
+        ctfd_by_slug[slug] = c
+        ctfd_by_slug[c.name.lower()] = c
+
+    result = []
+    for ix in ix_challenges:
+        cid = ix["id"]
+        # Find matching CTFd challenge
+        ctfd = ctfd_by_slug.get(cid)
+        if not ctfd:
+            # fuzzy: find any CTFd slug that ix id starts with or vice versa
+            for k, v in ctfd_by_slug.items():
+                if k == cid or cid.startswith(k) or k.startswith(cid):
+                    ctfd = v
                     break
+
         result.append({
-            "ctfd_id":     c.id,
-            "id":          ix["id"] if ix else slug,
-            "name":        c.name,
-            "category":    c.category or "",
-            "points":      c.value,
-            "description": _strip_html(c.description),
-            "enabled":     ix is not None,
-            "runtime":     ix["runtime"]    if ix else "docker",
-            "image":       ix["image"]      if ix else "",
-            "port":        ix["port"]       if ix else 8080,
-            "cpu_count":   ix["cpu_count"]  if ix else 1,
-            "memory_mb":   ix["memory_mb"]  if ix else 512,
-            "ttl_seconds": ix["ttl_seconds"] if ix else None,
+            "id":          cid,
+            "name":        ctfd.name        if ctfd else ix.get("name", cid),
+            "category":    (ctfd.category   if ctfd else "") or "",
+            "points":      ctfd.value       if ctfd else None,
+            "description": _strip_html(ctfd.description) if ctfd else "",
+            "runtime":     ix["runtime"],
+            "image":       ix.get("image", ""),
+            "port":        ix.get("port", 8080),
+            "cpu_count":   ix.get("cpu_count", 1),
+            "memory_mb":   ix.get("memory_mb", 512),
+            "ttl_seconds": ix.get("ttl_seconds"),
         })
+
+    result.sort(key=lambda r: (r["category"], r["points"] or 0, r["name"]))
     return jsonify(result)
 
 
