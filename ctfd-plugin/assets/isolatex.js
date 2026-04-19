@@ -216,11 +216,16 @@
 
   async function doLaunch(ctx) {
     disableAll(ctx);
-    setStatus(ctx, "Launching…");
+    show(ctx.btnLaunch);
+    setStatus(ctx, "Starting… (this can take a few seconds)");
     try {
       await api(ctx.cid, "POST");
     } catch (e) {
+      enableAll(ctx);
+      show(ctx.btnLaunch);
       showMsg(ctx, `Launch failed: ${e.message}`);
+      setStatus(ctx, "No instance running.");
+      return;
     }
     await refresh(ctx);
   }

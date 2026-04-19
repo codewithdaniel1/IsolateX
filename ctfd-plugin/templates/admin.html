@@ -10,28 +10,45 @@
 
 <div class="container" id="ix-admin">
 
-  <!-- Global defaults -->
+  <!-- Quick guide -->
   <div class="row mb-4">
     <div class="col-12">
-      <div class="card">
-        <div class="card-header"><strong>Global Defaults</strong>
-          <small class="text-muted ms-2">Applied to any enabled challenge that doesn't have its own tier override</small>
-        </div>
+      <div class="card border-0 bg-light">
         <div class="card-body">
-          <form id="global-form" class="row g-3 align-items-end">
+          <h6 class="card-title mb-3">Setup guide</h6>
+          <div class="row g-3">
             <div class="col-md-4">
-              <label class="form-label">Default Resource Tier</label>
-              <select class="form-select" id="g-tier">
-                <option value="1">Tier 1 — 1 core / 512 MB</option>
-                <option value="2">Tier 2 — 2 cores / 1 GB</option>
-                <option value="4">Tier 3 — 4 cores / 2 GB</option>
-              </select>
+              <div class="card h-100 border-primary">
+                <div class="card-body">
+                  <span class="badge bg-primary mb-2">Docker</span>
+                  <p class="small mb-1"><strong>Local dev, static web, crypto, reversing</strong></p>
+                  <p class="small text-muted mb-1">No Kubernetes needed. Works on macOS and Linux.</p>
+                  <p class="small text-muted mb-0">Tier 1 (1 core / 512 MB) is enough for most.</p>
+                </div>
+              </div>
             </div>
-            <div class="col-auto">
-              <button type="submit" class="btn btn-primary">Save</button>
-              <span id="global-msg" class="ms-3 small"></span>
+            <div class="col-md-4">
+              <div class="card h-100 border-success">
+                <div class="card-body">
+                  <span class="badge bg-success mb-2">kCTF</span>
+                  <p class="small mb-1"><strong>Web, moderate pwn, most production challenges</strong></p>
+                  <p class="small text-muted mb-1">Kubernetes + nsjail. Requires a Linux host.</p>
+                  <p class="small text-muted mb-0">Tier 2 (2 cores / 1 GB) covers most cases.</p>
+                </div>
+              </div>
             </div>
-          </form>
+            <div class="col-md-4">
+              <div class="card h-100 border-danger">
+                <div class="card-body">
+                  <span class="badge bg-danger mb-2">Kata-FC</span>
+                  <p class="small mb-1"><strong>Pwn, RCE, kernel exploitation, AI sandboxing</strong></p>
+                  <p class="small text-muted mb-1">Each instance runs in its own Firecracker microVM.</p>
+                  <p class="small text-muted mb-0">Tier 3 (4 cores / 2 GB) for heavy workloads.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="small text-muted mt-3 mb-0">Instance TTL is <strong>2 hours</strong>. Players can click <strong>Renew</strong> to reset the timer at any time.</p>
         </div>
       </div>
     </div>
@@ -72,23 +89,6 @@
     </div>
   </div>
 
-  <!-- Help card -->
-  <div class="row mt-4 mb-5">
-    <div class="col-12">
-      <div class="card border-0 bg-light">
-        <div class="card-body">
-          <h6 class="card-title">Quick start</h6>
-          <ol class="mb-0 small">
-            <li>Toggle <strong>On</strong> for any challenge that needs a live instance per team.</li>
-            <li>Set the <strong>Docker Image</strong> (the image your challenge container runs).</li>
-            <li>Pick a <strong>Runtime</strong>: Docker for local dev, kCTF for most prod challenges, Kata-FC for pwn/kernel/RCE.</li>
-            <li>Click <strong>Save</strong>. Players will immediately see the Launch button on that challenge.</li>
-          </ol>
-          <p class="mt-2 mb-0 small text-muted">Challenges without instancing enabled are completely unaffected — no panel is shown to players. Instance TTL is always 2 hours; players can Renew to reset the timer.</p>
-        </div>
-      </div>
-    </div>
-  </div>
 
 </div>
 
@@ -127,37 +127,7 @@
     return data;
   }
 
-  let globalTierCpu = 1;
   let allRows = [];
-
-  // ── global defaults ─────────────────────────────────────────────────────────
-  async function loadGlobals() {
-    try {
-      const d = await api("/isolatex/admin/config");
-      globalTierCpu = d.default_cpu_count ?? 1;
-      document.getElementById("g-tier").value = String(globalTierCpu);
-    } catch(e) { console.error("loadGlobals", e); }
-  }
-
-  document.getElementById("global-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById("global-msg");
-    msg.textContent = "Saving…"; msg.className = "ms-3 small text-muted";
-    const cpu = parseFloat(document.getElementById("g-tier").value);
-    const tier = tierFromCpu(cpu);
-    try {
-      await api("/isolatex/admin/config", "POST", {
-        default_ttl_seconds: TTL_SECONDS,
-        default_cpu_count:   cpu,
-        default_memory_mb:   tier.mem,
-      });
-      globalTierCpu = cpu;
-      msg.textContent = "Saved."; msg.className = "ms-3 small text-success";
-    } catch(e) {
-      msg.textContent = "Error: " + e.message; msg.className = "ms-3 small text-danger";
-    }
-    setTimeout(() => { msg.textContent = ""; }, 3000);
-  });
 
   // ── challenge table ─────────────────────────────────────────────────────────
   async function loadChallenges() {
@@ -267,7 +237,7 @@
     const image   = row.querySelector(".ix-image").value.trim();
     const tierVal = row.querySelector(".ix-tier").value;
     const tier    = tierVal ? TIERS.find(t => t.cpu === parseFloat(tierVal)) : null;
-    const effectiveTier = tier || tierFromCpu(globalTierCpu);
+    const effectiveTier = tier || TIERS[0];
 
     if (!image) {
       msg.textContent = "Need image"; msg.className = "ix-row-msg ms-1 small d-block text-warning";
@@ -302,7 +272,7 @@
     renderTable(filtered);
   });
 
-  loadGlobals().then(loadChallenges);
+  loadChallenges();
 })();
 </script>
 {% endblock %}
