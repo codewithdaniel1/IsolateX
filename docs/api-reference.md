@@ -113,11 +113,11 @@ POST /challenges
 |---|---|---|---|
 | `id` | Yes | — | Unique slug, must match CTFd challenge slug |
 | `name` | Yes | — | Display name |
-| `runtime` | Yes | — | `docker`, `kctf`, `kata`, or `kata-firecracker` |
+| `runtime` | Yes | — | `docker`, `kctf`, or `kata-firecracker` |
 | `image` | Yes | — | Docker image to run |
 | `port` | Yes | — | Port the app listens on inside the container |
-| `cpu_count` | No | 1 | CPU cores (0.5, 1, 2, 4) |
-| `memory_mb` | No | 512 | Memory in MB (256, 512, 1024, 2048) |
+| `cpu_count` | No | 1 | CPU cores (1, 2, 4) |
+| `memory_mb` | No | 512 | Memory in MB (512, 1024, 2048) |
 | `ttl_seconds` | No | global default | Instance lifetime; null = use global default |
 | `extra_config` | No | — | JSON string for adapter-specific options |
 
@@ -127,7 +127,6 @@ POST /challenges
 |---|---|
 | `docker` | Standard Docker container (local dev, easy challenges) |
 | `kctf` | Kubernetes pod + nsjail (medium isolation) |
-| `kata` | Kubernetes + Kata Containers with QEMU backend (strong isolation) |
 | `kata-firecracker` | Kubernetes + Kata Containers with Firecracker backend (strongest isolation) |
 
 ### Update challenge settings

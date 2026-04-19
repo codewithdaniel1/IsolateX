@@ -39,10 +39,9 @@ Set per-challenge in the admin panel (Plugins → IsolateX):
 
 | Tier | CPU | Memory | Runtime | When to use |
 |---|---|---|---|---|
-| Tier 1 | 0.5 cores | 256 MB | Docker | Static web, trivial challenges |
-| Tier 2 | 1 core | 512 MB | kCTF | Typical web / reversing |
-| Tier 3 | 2 cores | 1 GB | kCTF | Pwn, heavier web |
-| Tier 4 | 4 cores | 2 GB | Kata-FC | AI, compilation, kernel challenges |
+| Tier 1 | 1 core | 512 MB | Docker / kCTF | Static web, trivial challenges |
+| Tier 2 | 2 cores | 1 GB | kCTF | Typical web / reversing / pwn |
+| Tier 3 | 4 cores | 2 GB | Kata-FC | AI, compilation, kernel challenges |
 
 ---
 

@@ -27,10 +27,9 @@
             <div class="col-md-4">
               <label class="form-label">Default Resource Tier <small class="text-muted">(sets CPU + Memory for all challenges on "Global default")</small></label>
               <select class="form-select" id="g-tier">
-                <option value="0.5">Tier 1 — 0.5 cores / 256 MB (Docker)</option>
-                <option value="1">Tier 2 — 1 core / 512 MB (kCTF)</option>
-                <option value="2">Tier 3 — 2 cores / 1 GB (Kata)</option>
-                <option value="4">Tier 4 — 4 cores / 2 GB (Kata-FC)</option>
+                <option value="1">Tier 1 — 1 core / 512 MB</option>
+                <option value="2">Tier 2 — 2 cores / 1 GB</option>
+                <option value="4">Tier 3 — 4 cores / 2 GB</option>
               </select>
             </div>
             <div class="col-12">
@@ -128,16 +127,14 @@
 
   // ── tier definitions ───────────────────────────────────────────────────────
   const TIERS = [
-    { cpu: 0.5, mem: 256,  label: "T1 — 0.5 cores / 256 MB",  runtime: "Docker",    badge: "bg-primary" },
-    { cpu: 1,   mem: 512,  label: "T2 — 1 core / 512 MB",     runtime: "kCTF",      badge: "bg-success" },
-    { cpu: 2,   mem: 1024, label: "T3 — 2 cores / 1 GB",      runtime: "Kata",      badge: "bg-warning text-dark" },
-    { cpu: 4,   mem: 2048, label: "T4 — 4 cores / 2 GB",      runtime: "Kata-FC",   badge: "bg-danger"  },
+    { cpu: 1,   mem: 512,  label: "T1 — 1 core / 512 MB",    runtime: "Docker",  badge: "bg-primary" },
+    { cpu: 2,   mem: 1024, label: "T2 — 2 cores / 1 GB",     runtime: "kCTF",    badge: "bg-success" },
+    { cpu: 4,   mem: 2048, label: "T3 — 4 cores / 2 GB",     runtime: "Kata-FC", badge: "bg-danger"  },
   ];
 
   const RUNTIME_LABEL = {
     "docker":           "Docker",
     "kctf":             "kCTF",
-    "kata":             "Kata",
     "kata-firecracker": "Kata-FC",
   };
 

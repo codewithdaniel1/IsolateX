@@ -120,8 +120,8 @@ docker build -t my-challenge:latest ./challenges/my-challenge/
 Go to **CTFd Admin → Plugins → IsolateX**:
 
 - **Global TTL** — how long each instance runs before auto-stopping; Renew always resets to this duration (default: 30 min)
-- **Per-challenge CPU tier** — 0.5 / 1 / 2 / 4 cores
-- **Per-challenge Memory tier** — 256 MB / 512 MB / 1 GB / 2 GB
+- **Per-challenge CPU tier** — 1 / 2 / 4 cores
+- **Per-challenge Memory tier** — 512 MB / 1 GB / 2 GB
 
 Changes to TTL and resources take effect on the next launched instance. Running instances are not affected.
 
@@ -180,10 +180,9 @@ FLAG = os.environ.get("ISOLATEX_FLAG", "flag{placeholder}")
 
 | Tier | CPU | Memory | Use case |
 |---|---|---|---|
-| 1 | 0.5 cores | 256 MB | Static sites, trivial challenges |
-| 2 | 1 core | 512 MB | Typical web / reversing |
-| 3 | 2 cores | 1 GB | Pwn, heavier services |
-| 4 | 4 cores | 2 GB | AI, compilation, heavy compute |
+| 1 | 1 core | 512 MB | Static sites, typical web / reversing |
+| 2 | 2 cores | 1 GB | Pwn, heavier services |
+| 3 | 4 cores | 2 GB | AI, compilation, heavy compute |
 
 You can set these per-challenge in **Admin → Plugins → IsolateX** after registration.
 
