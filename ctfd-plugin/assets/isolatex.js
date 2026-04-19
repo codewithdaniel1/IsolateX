@@ -20,7 +20,10 @@
   // -------------------------------------------------------------------------
 
   document.addEventListener("DOMContentLoaded", initObserver);
-  document.addEventListener("shown.bs.modal", scanPanels);
+  document.addEventListener("shown.bs.modal", () => {
+    // Give Alpine.js a tick to render the challenge content before injecting
+    setTimeout(() => { autoInjectPanel(); scanPanels(); }, 50);
+  });
 
   function initObserver() {
     // Watch for CTFd dynamically injecting challenge content
@@ -41,23 +44,17 @@
   }
 
   function autoInjectPanel() {
-    // Look for challenge info in various places CTFd might put it
-
-    // Method 1: Find by challenge title in the header
-    const titleEl = document.querySelector(".challenge-name") || document.querySelector("h1.challenge-name");
+    const titleEl = document.querySelector(".challenge-name");
     if (!titleEl) return;
 
     const cid = titleEl.textContent?.trim().toLowerCase().replace(/\s+/g, "-") || "";
     if (!cid || document.querySelector(`[data-isolatex-challenge="${cid}"]`)) return;
 
-    // Find insertion point - after challenge info section
-    const infoSection = document.querySelector(".challenge-info") || document.querySelector("[data-challenge-info]");
-    const descSection = document.querySelector(".challenge-description");
-    const insertAfter = descSection || infoSection;
+    // Insert after the challenge description span (CTFd core theme: .challenge-desc)
+    const insertAfter = document.querySelector(".challenge-desc") ||
+                        document.querySelector(".challenge-description") ||
+                        titleEl;
 
-    if (!insertAfter) return;
-
-    // Create and insert panel
     const panel = document.createElement("div");
     panel.setAttribute("data-isolatex-challenge", cid);
     panel.style.marginTop = "1rem";
