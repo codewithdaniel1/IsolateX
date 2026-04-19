@@ -111,6 +111,8 @@ services:
     depends_on:
       orchestrator:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     networks:
       - isolatex_internal
     ports:

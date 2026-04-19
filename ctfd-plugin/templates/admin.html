@@ -15,15 +15,10 @@
     <div class="col-12">
       <div class="card">
         <div class="card-header"><strong>Global Defaults</strong>
-          <small class="text-muted ms-2">Applied to any enabled challenge that doesn't have its own override</small>
+          <small class="text-muted ms-2">Applied to any enabled challenge that doesn't have its own tier override</small>
         </div>
         <div class="card-body">
           <form id="global-form" class="row g-3 align-items-end">
-            <div class="col-md-3">
-              <label class="form-label">Instance TTL (minutes)</label>
-              <input type="number" class="form-control" id="g-ttl" min="1" max="480" placeholder="30">
-              <div class="form-text">How long each instance lives. Renew resets to this duration.</div>
-            </div>
             <div class="col-md-4">
               <label class="form-label">Default Resource Tier</label>
               <select class="form-select" id="g-tier">
@@ -49,7 +44,7 @@
         <div class="card-header d-flex align-items-center justify-content-between">
           <div>
             <strong>Challenges</strong>
-            <small class="text-muted ms-2">Toggle instancing on/off per challenge. Changes save automatically.</small>
+            <small class="text-muted ms-2">Toggle instancing on/off per challenge. TTL is always 2 hours.</small>
           </div>
           <div class="d-flex align-items-center gap-2">
             <input type="text" class="form-control form-control-sm" id="search-box" placeholder="Filter…" style="width:180px">
@@ -63,15 +58,13 @@
                 <th style="width:36px">On</th>
                 <th>Challenge</th>
                 <th style="width:90px">Runtime</th>
-                <th style="width:200px">Docker Image</th>
-                <th style="width:70px">Port</th>
-                <th style="width:140px">Tier</th>
-                <th style="width:80px">TTL (min)</th>
+                <th style="width:220px">Docker Image</th>
+                <th style="width:150px">Tier</th>
                 <th style="width:70px"></th>
               </tr>
             </thead>
             <tbody id="chal-tbody">
-              <tr><td colspan="8" class="text-center text-muted py-4">Loading challenges…</td></tr>
+              <tr><td colspan="6" class="text-center text-muted py-4">Loading challenges…</td></tr>
             </tbody>
           </table>
         </div>
@@ -87,11 +80,11 @@
           <h6 class="card-title">Quick start</h6>
           <ol class="mb-0 small">
             <li>Toggle <strong>On</strong> for any challenge that needs a live instance per team.</li>
-            <li>Set the <strong>Docker Image</strong> (the image your challenge container runs) and <strong>Port</strong>.</li>
+            <li>Set the <strong>Docker Image</strong> (the image your challenge container runs).</li>
             <li>Pick a <strong>Runtime</strong>: Docker for local dev, kCTF for most prod challenges, Kata-FC for pwn/kernel/RCE.</li>
             <li>Click <strong>Save</strong>. Players will immediately see the Launch button on that challenge.</li>
           </ol>
-          <p class="mt-2 mb-0 small text-muted">Challenges without instancing enabled are completely unaffected — no panel is shown to players.</p>
+          <p class="mt-2 mb-0 small text-muted">Challenges without instancing enabled are completely unaffected — no panel is shown to players. Instance TTL is always 2 hours; players can Renew to reset the timer.</p>
         </div>
       </div>
     </div>
@@ -104,7 +97,8 @@
   "use strict";
   const NONCE = window.init?.csrfNonce || "";
 
-  // ── constants ───────────────────────────────────────────────────────────────
+  const TTL_SECONDS = 7200; // fixed 2-hour TTL
+
   const TIERS = [
     { cpu: 1,   mem: 512,  label: "T1 — 1 core / 512 MB"  },
     { cpu: 2,   mem: 1024, label: "T2 — 2 cores / 1 GB"   },
@@ -112,15 +106,14 @@
   ];
 
   const RUNTIMES = [
-    { value: "docker",           label: "Docker",   badge: "bg-primary"  },
-    { value: "kctf",             label: "kCTF",     badge: "bg-success"  },
-    { value: "kata-firecracker", label: "Kata-FC",  badge: "bg-danger"   },
+    { value: "docker",           label: "Docker",  badge: "bg-primary" },
+    { value: "kctf",             label: "kCTF",    badge: "bg-success" },
+    { value: "kata-firecracker", label: "Kata-FC", badge: "bg-danger"  },
   ];
 
   function tierFromCpu(cpu) { return TIERS.find(t => t.cpu === cpu) || TIERS[0]; }
   function runtimeMeta(v)   { return RUNTIMES.find(r => r.value === v) || RUNTIMES[0]; }
 
-  // ── API helper ──────────────────────────────────────────────────────────────
   async function api(url, method, body) {
     const r = await fetch(url, {
       method: method || "GET",
@@ -134,9 +127,6 @@
     return data;
   }
 
-  function secToMin(v) { return v ? Math.round(v / 60) : ""; }
-  function minToSec(v) { return v ? parseInt(v) * 60 : null; }
-
   let globalTierCpu = 1;
   let allRows = [];
 
@@ -145,7 +135,6 @@
     try {
       const d = await api("/isolatex/admin/config");
       globalTierCpu = d.default_cpu_count ?? 1;
-      document.getElementById("g-ttl").value  = secToMin(d.default_ttl_seconds) || 30;
       document.getElementById("g-tier").value = String(globalTierCpu);
     } catch(e) { console.error("loadGlobals", e); }
   }
@@ -158,7 +147,7 @@
     const tier = tierFromCpu(cpu);
     try {
       await api("/isolatex/admin/config", "POST", {
-        default_ttl_seconds: minToSec(document.getElementById("g-ttl").value) || 1800,
+        default_ttl_seconds: TTL_SECONDS,
         default_cpu_count:   cpu,
         default_memory_mb:   tier.mem,
       });
@@ -178,7 +167,7 @@
       allRows = chals;
       renderTable(chals);
     } catch(e) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-3">${e.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-3">${e.message}</td></tr>`;
     }
   }
 
@@ -187,22 +176,16 @@
     document.getElementById("chal-count").textContent = chals.length + " challenges";
 
     if (!chals.length) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">No challenges found in CTFd.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No challenges found in CTFd.</td></tr>`;
       return;
     }
-
-    const runtimeOpts = RUNTIMES.map(r =>
-      `<option value="${r.value}">${r.label}</option>`
-    ).join("");
-
-    const tierOpts = TIERS.map(t =>
-      `<option value="${t.cpu}">${t.label}</option>`
-    ).join("");
 
     tbody.innerHTML = chals.map(c => {
       const on = c.enabled;
       const dimCls = on ? "" : "opacity-50";
       const disabledAttr = on ? "" : "disabled";
+      const rt = runtimeMeta(c.runtime);
+      const tierLabel = c.cpu_count ? (TIERS.find(t => t.cpu === c.cpu_count)?.label || "Global default") : "Global default";
       return `
       <tr data-id="${c.id}" data-enabled="${on}" class="${dimCls}">
         <td class="align-middle text-center">
@@ -214,7 +197,7 @@
         <td class="align-middle">
           <strong>${c.name}</strong>
           <small class="text-muted d-block">${c.category || ""}${c.points ? " · " + c.points + " pts" : ""}</small>
-          ${c.description ? `<small class="text-secondary d-block" style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${c.description.replace(/"/g,'&quot;')}">${c.description}</small>` : ""}
+          ${c.description ? `<small class="text-secondary d-block" style="max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${c.description.replace(/"/g,'&quot;')}">${c.description}</small>` : ""}
         </td>
         <td class="align-middle">
           <select class="form-select form-select-sm ix-runtime" ${disabledAttr}>
@@ -226,17 +209,10 @@
                  value="${c.image || ""}" placeholder="myimage:latest">
         </td>
         <td class="align-middle">
-          <input type="number" class="form-control form-control-sm ix-port" ${disabledAttr}
-                 value="${c.port || 8888}" min="1" max="65535">
-        </td>
-        <td class="align-middle">
           <select class="form-select form-select-sm ix-tier" ${disabledAttr}>
+            <option value="">Global default</option>
             ${TIERS.map(t => `<option value="${t.cpu}"${c.cpu_count === t.cpu ? " selected" : ""}>${t.label}</option>`).join("")}
           </select>
-        </td>
-        <td class="align-middle">
-          <input type="number" class="form-control form-control-sm ix-ttl" ${disabledAttr}
-                 value="${secToMin(c.ttl_seconds)}" placeholder="global" min="1" max="480">
         </td>
         <td class="align-middle">
           <button class="btn btn-sm btn-primary ix-save" ${disabledAttr} data-id="${c.id}">Save</button>
@@ -245,12 +221,10 @@
       </tr>`;
     }).join("");
 
-    // Wire toggles
     tbody.querySelectorAll(".ix-toggle").forEach(tog => {
       tog.addEventListener("change", () => handleToggle(tog));
     });
 
-    // Wire save buttons
     tbody.querySelectorAll(".ix-save").forEach(btn => {
       btn.addEventListener("click", () => saveRow(btn.dataset.id));
     });
@@ -262,45 +236,38 @@
     const on  = tog.checked;
     const msg = row.querySelector(".ix-row-msg");
 
-    // Dim/undim row and enable/disable fields immediately for responsiveness
     row.dataset.enabled = on;
     row.classList.toggle("opacity-50", !on);
-    row.querySelectorAll("input, select, button.ix-save").forEach(el => {
-      el.disabled = !on;
-    });
-    tog.disabled = false; // keep toggle itself always enabled
+    row.querySelectorAll("input, select, button.ix-save").forEach(el => { el.disabled = !on; });
+    tog.disabled = false;
 
     if (!on) {
-      // Disable: remove from orchestrator
       msg.textContent = "…"; msg.className = "ix-row-msg ms-1 small d-block text-muted";
       try {
         await api(`/isolatex/admin/challenges/${id}/disable`, "POST");
         msg.textContent = "Off."; msg.className = "ix-row-msg ms-1 small d-block text-muted";
       } catch(e) {
         msg.textContent = "Error"; msg.className = "ix-row-msg ms-1 small d-block text-danger";
-        // Roll back toggle on error
         tog.checked = true;
         row.classList.remove("opacity-50");
         row.querySelectorAll("input, select, button.ix-save").forEach(el => { el.disabled = false; });
         tog.disabled = false;
       }
     } else {
-      // Enabled: auto-save with current values
       await saveRow(id, true);
     }
     setTimeout(() => { msg.textContent = ""; }, 2500);
   }
 
   async function saveRow(id, silent) {
-    const row  = document.querySelector(`tr[data-id="${id}"]`);
-    const msg  = row.querySelector(".ix-row-msg");
-    const name = row.querySelector("strong").textContent.trim();
-    const runtime  = row.querySelector(".ix-runtime").value;
-    const image    = row.querySelector(".ix-image").value.trim();
-    const port     = parseInt(row.querySelector(".ix-port").value) || 8888;
-    const cpuVal   = parseFloat(row.querySelector(".ix-tier").value);
-    const tier     = tierFromCpu(cpuVal);
-    const ttlVal   = row.querySelector(".ix-ttl").value;
+    const row    = document.querySelector(`tr[data-id="${id}"]`);
+    const msg    = row.querySelector(".ix-row-msg");
+    const name   = row.querySelector("strong").textContent.trim();
+    const runtime = row.querySelector(".ix-runtime").value;
+    const image   = row.querySelector(".ix-image").value.trim();
+    const tierVal = row.querySelector(".ix-tier").value;
+    const tier    = tierVal ? TIERS.find(t => t.cpu === parseFloat(tierVal)) : null;
+    const effectiveTier = tier || tierFromCpu(globalTierCpu);
 
     if (!image) {
       msg.textContent = "Need image"; msg.className = "ix-row-msg ms-1 small d-block text-warning";
@@ -312,10 +279,11 @@
 
     try {
       await api(`/isolatex/admin/challenges/${id}`, "POST", {
-        id, name, runtime, image, port,
-        cpu_count:   tier.cpu,
-        memory_mb:   tier.mem,
-        ttl_seconds: minToSec(ttlVal),
+        id, name, runtime, image,
+        port:        8080,
+        cpu_count:   effectiveTier.cpu,
+        memory_mb:   effectiveTier.mem,
+        ttl_seconds: TTL_SECONDS,
       });
       msg.textContent = "Saved ✓"; msg.className = "ix-row-msg ms-1 small d-block text-success";
     } catch(e) {
@@ -334,7 +302,6 @@
     renderTable(filtered);
   });
 
-  // ── init ────────────────────────────────────────────────────────────────────
   loadGlobals().then(loadChallenges);
 })();
 </script>
