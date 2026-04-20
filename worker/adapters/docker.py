@@ -91,8 +91,9 @@ class DockerAdapter(RuntimeAdapter):
             "--pids-limit", str(extra.get("pids_limit", 256)),
         ]
 
-        # Hardening — skip cap-drop if the image needs privileges (e.g. legacy LAMP stacks)
-        if not extra.get("skip_cap_drop"):
+        # Hardening — only applied when explicitly requested via extra_config
+        # Docker runtime is for local dev; kCTF/Kata-FC handle production hardening
+        if extra.get("cap_drop"):
             cmd += ["--cap-drop", "ALL", "--security-opt", "no-new-privileges:true"]
 
         cmd += [req.image]
