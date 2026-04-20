@@ -1,6 +1,7 @@
 #!/bin/bash
-# Import all recruit-chals into CTFd and register instanced ones with the orchestrator.
-# Reads challenge.json for metadata. Skips challenges already in CTFd by name.
+# Import all recruit-chals into CTFd, register instanced ones with the orchestrator,
+# and upload any downloadable challenge files declared in challenge.json.
+# Skips challenges already in CTFd by name.
 #
 # Usage:
 #   ./scripts/import-recruit-chals.sh [path-to-recruit-chals]
@@ -155,3 +156,17 @@ for c in challenges:
 print("")
 print(f"Done. {imported} added, {skipped} skipped, {orch_registered} registered with IsolateX.")
 PYEOF
+
+if [ "${SKIP_FILE_UPLOAD:-0}" = "1" ]; then
+  echo "Skipping challenge file upload because SKIP_FILE_UPLOAD=1."
+  exit 0
+fi
+
+echo ""
+echo "Syncing downloadable challenge files into CTFd..."
+if ! CHALS_DIR="$RECRUIT_DIR" python3 "$SCRIPT_DIR/scripts/upload-challenge-files.py"; then
+  echo ""
+  echo "WARNING: challenge file upload did not complete."
+  echo "Set CTFD_URL / CTFD_USER / CTFD_PASS if needed, then rerun:"
+  echo "  CHALS_DIR=\"$RECRUIT_DIR\" python3 scripts/upload-challenge-files.py"
+fi

@@ -1,5 +1,3 @@
-version: "3.9"
-
 # IsolateX full dev stack
 # Services: orchestrator, worker (docker runtime), CTFd, Postgres, Redis, Traefik
 #

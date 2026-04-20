@@ -60,10 +60,12 @@ cp -r ctfd-plugin/ <path-to-CTFd>/CTFd/plugins/isolatex/
 ```
 
 Restart CTFd. Then:
-1. Run `./scripts/import-recruit-chals.sh` to auto-register your challenges with the orchestrator
+1. Run `./scripts/import-recruit-chals.sh` to import challenges, auto-register instanced ones with the orchestrator, and upload any downloadable files declared in `challenge.json`
 2. Go to **Admin → Plugins → IsolateX** — only registered (instanced) challenges appear
 3. Adjust runtime or tier per challenge if needed and click **Save**
 4. Done — players see the Launch button on registered challenges; all others are unaffected
+
+If your CTFd admin credentials are not the default `admin` / `admin`, set `CTFD_USER` and `CTFD_PASS` before running the import script so downloadable challenge files can be attached automatically.
 
 ### Starting from scratch
 

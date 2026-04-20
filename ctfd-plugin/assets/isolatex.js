@@ -19,15 +19,24 @@
   // Bootstrap
   // -------------------------------------------------------------------------
 
-  document.addEventListener("DOMContentLoaded", initObserver);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initObserver, { once: true });
+  } else {
+    initObserver();
+  }
   document.addEventListener("shown.bs.modal", () => {
     // Give Alpine.js a tick to render the challenge content before injecting
-    setTimeout(() => { autoInjectPanel(); scanPanels(); }, 50);
+    setTimeout(() => {
+      autoInjectPanel();
+      scanDescriptions();
+      scanPanels();
+    }, 50);
   });
 
   function initObserver() {
     // Watch for CTFd dynamically injecting challenge content
     const observer = new MutationObserver(() => {
+      scanDescriptions();
       scanPanels();
       // Auto-inject panel if we're on a challenge page
       autoInjectPanel();
@@ -39,6 +48,7 @@
       characterData: false,
     });
 
+    scanDescriptions();
     scanPanels();
     autoInjectPanel();
   }
@@ -155,6 +165,7 @@
   function render(ctx, data) {
     clearMsg(ctx);
     stopTimer(ctx);
+    setLaunchPending(ctx, false);
     hide(ctx.endpoint);
     hide(ctx.ttl);
     enableAll(ctx);
@@ -169,7 +180,8 @@
     }
 
     if (status === "pending") {
-      setStatus(ctx, "Starting… (this can take a few seconds)");
+      setLaunchPending(ctx, true);
+      setStatus(ctx, "Starting... (this can take a few seconds)");
       show(ctx.btnLaunch);
       disableAll(ctx);
       setTimeout(() => refresh(ctx), POLL_MS);
@@ -221,12 +233,14 @@
   async function doLaunch(ctx) {
     disableAll(ctx);
     show(ctx.btnLaunch);
-    setStatus(ctx, "Starting… (this can take a few seconds)");
-    // Force a repaint so the "Starting…" text renders before the POST blocks
-    await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+    setLaunchPending(ctx, true);
+    setStatus(ctx, "Starting... (this can take a few seconds)");
+    // Force a repaint so the loading state renders before the POST starts.
+    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
     try {
       await api(ctx.cid, "POST");
     } catch (e) {
+      setLaunchPending(ctx, false);
       enableAll(ctx);
       show(ctx.btnLaunch);
       showMsg(ctx, `Launch failed: ${e.message}`);
@@ -337,6 +351,10 @@
 
   function hideAllButtons(ctx) {
     [ctx.btnLaunch, ctx.btnRestart, ctx.btnRenew, ctx.btnStop].forEach(hide);
+  }
+
+  function setLaunchPending(ctx, pending) {
+    ctx.btnLaunch.textContent = pending ? "Starting..." : "Launch";
   }
 
   function disableAll(ctx) {
