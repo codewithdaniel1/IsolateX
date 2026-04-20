@@ -1,12 +1,8 @@
-# IsolateX
-
-<img
-  src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MjAiIGhlaWdodD0iMTIwIiB2aWV3Qm94PSIwIDAgNTIwIDEyMCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJJc29sYXRlWCI+PHRleHQgeD0iMCIgeT0iODIiIGZpbGw9IiNGOEZBRkMiIGZvbnQtZmFtaWx5PSJBcmlhbCwgSGVsdmV0aWNhLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjcyIiBmb250LXdlaWdodD0iODAwIiBsZXR0ZXItc3BhY2luZz0iLTIiPklzb2xhdGU8dHNwYW4gZmlsbD0iIzM4QkRGOCI+WDwvdHNwYW4+PC90ZXh0Pjwvc3ZnPg=="
-  alt="IsolateX"
-  width="260"
-  align="left"
-/>
-<br clear="left" />
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="120" viewBox="0 0 520 120" role="img" aria-label="IsolateX">
+  <text x="0" y="82" fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="800" letter-spacing="-2">
+    Isolate<tspan fill="#38BDF8">X</tspan>
+  </text>
+</svg>
 
 **A CTFd plug-in for per-team challenge instancing.**
 
