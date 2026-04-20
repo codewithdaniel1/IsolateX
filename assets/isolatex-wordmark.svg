@@ -1,11 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="620" height="160" viewBox="0 0 620 160" role="img" aria-label="IsolateX">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-label="IsolateX">
   <defs>
-    <linearGradient id="isolatex-fill" x1="24" y1="24" x2="520" y2="132" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#7C3AED" />
-      <stop offset="1" stop-color="#14B8A6" />
+    <linearGradient id="isolatex-fill" x1="0" y1="0" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#14B8A6" />
     </linearGradient>
   </defs>
-  <text x="14" y="102" fill="url(#isolatex-fill)" stroke="none" font-family="Arial, Helvetica, sans-serif" font-size="88" font-weight="800" letter-spacing="-3">
-    Isolate<tspan dx="3">X</tspan>
+
+  <text
+    x="40"
+    y="220"
+    fill="url(#isolatex-fill)"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="200"
+    font-weight="800"
+    letter-spacing="-6"
+  >
+    Isolate<tspan dx="8">X</tspan>
   </text>
 </svg>
