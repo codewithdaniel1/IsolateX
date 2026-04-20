@@ -5,7 +5,7 @@
       <stop offset="1" stop-color="#14B8A6" />
     </linearGradient>
   </defs>
-  <text x="14" y="102" fill="url(#isolatex-fill)" font-family="Arial, Helvetica, sans-serif" font-size="88" font-weight="800" letter-spacing="-3">
+  <text x="14" y="102" fill="url(#isolatex-fill)" stroke="none" font-family="Arial, Helvetica, sans-serif" font-size="88" font-weight="800" letter-spacing="-3">
     Isolate<tspan dx="3">X</tspan>
   </text>
 </svg>
