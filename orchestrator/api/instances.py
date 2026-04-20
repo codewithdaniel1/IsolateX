@@ -234,6 +234,24 @@ async def _create_instance_record(
     return inst
 
 
+async def _wait_for_ready(worker: Worker, instance_id: str, timeout: int = 30, interval: float = 0.5) -> None:
+    """Poll worker /ready endpoint until container is accepting HTTP or timeout."""
+    import asyncio
+    import time
+    url = f"http://{worker.address}:{worker.agent_port}/ready/{instance_id}"
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    return
+        except Exception:
+            pass
+        await asyncio.sleep(interval)
+    log.warning("readiness check timed out", instance_id=instance_id)
+
+
 async def _launch_on_worker(inst: Instance, challenge: Challenge, worker: Worker):
     from orchestrator.db.session import AsyncSessionLocal
     payload = {
@@ -255,13 +273,13 @@ async def _launch_on_worker(inst: Instance, challenge: Challenge, worker: Worker
             data = resp.json()
 
         endpoint = await register_route(str(inst.id), challenge.id, worker.address, data["port"])
+        await _wait_for_ready(worker, str(inst.id))
+
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Instance).where(Instance.id == inst.id))
             record = result.scalar_one()
             record.status = InstanceStatus.running
             record.backend_port = data["port"]
-            # For local dev (base_domain == "localhost"), skip Traefik subdomain and use direct port
-            # Use 127.0.0.1 explicitly — browsers try IPv6 (::1) first for "localhost" and fail
             if settings.base_domain == "localhost":
                 record.endpoint = f"http://127.0.0.1:{data['port']}"
             else:

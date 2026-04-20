@@ -67,6 +67,21 @@ async def launch(payload: LaunchPayload):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/ready/{instance_id}")
+async def ready(instance_id: str):
+    """Return 200 when the container's HTTP port is accepting connections."""
+    meta = adapter._instances.get(instance_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="unknown instance")
+    port = meta["host_port"]
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            await client.get(f"http://127.0.0.1:{port}/")
+        return {"ready": True}
+    except Exception:
+        raise HTTPException(status_code=503, detail="not ready")
+
+
 @app.delete("/destroy/{instance_id}")
 async def destroy(instance_id: str):
     try:
