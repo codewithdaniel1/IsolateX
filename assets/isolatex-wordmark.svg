@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="520" height="120" viewBox="0 0 520 120" role="img" aria-label="IsolateX">
-  <text x="0" y="82" fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="800" letter-spacing="-2">
-    Isolate<tspan fill="#38BDF8">X</tspan>
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="140" viewBox="0 0 560 140" role="img" aria-label="IsolateX">
+  <text x="10" y="92" fill="#CBD5E1" stroke="#0F172A" stroke-width="6" stroke-linejoin="round" paint-order="stroke fill" font-family="Arial, Helvetica, sans-serif" font-size="80" font-weight="800" letter-spacing="-2">
+    Isolate<tspan fill="#38BDF8" stroke="#0F172A">X</tspan>
   </text>
 </svg>
