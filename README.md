@@ -1,8 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="520" height="120" viewBox="0 0 520 120" role="img" aria-label="IsolateX">
-  <text x="0" y="82" fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="800" letter-spacing="-2">
-    Isolate<tspan fill="#38BDF8">X</tspan>
-  </text>
-</svg>
+<img src="assets/isolatex-wordmark.svg" alt="IsolateX" width="260" align="left" />
+<br clear="left" />
 
 **A CTFd plug-in for per-team challenge instancing.**
 
