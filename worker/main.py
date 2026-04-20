@@ -110,6 +110,25 @@ async def destroy(instance_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/detect-protocol")
+async def detect_protocol(image: str):
+    """Inspect image CMD/Entrypoint to determine if it speaks HTTP or raw TCP."""
+    import json as _json
+    TCP_KEYWORDS = ("socat", "netcat", "ncat", "xinetd", "nc ")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "inspect", "--format", "{{json .Config}}", image,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await proc.communicate()
+        cfg = _json.loads(stdout.decode())
+        cmd_str = " ".join((cfg.get("Cmd") or []) + (cfg.get("Entrypoint") or [])).lower()
+        protocol = "tcp" if any(kw in cmd_str for kw in TCP_KEYWORDS) else "http"
+        return {"protocol": protocol, "image": image}
+    except Exception as e:
+        return {"protocol": "http", "image": image, "error": str(e)}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "runtime": settings.runtime, "worker_id": settings.worker_id}

@@ -308,12 +308,31 @@ def admin_list_challenges():
         return jsonify({"error": str(e)}), 500
 
 
+def _detect_protocol(image: str) -> str:
+    """Ask the orchestrator to detect protocol from the Docker image."""
+    try:
+        resp = httpx.get(
+            f"{ORCHESTRATOR_URL}/challenges/detect-protocol",
+            params={"image": image},
+            headers=_headers(),
+            timeout=10.0,
+        )
+        if resp.status_code == 200:
+            return resp.json().get("protocol", "http")
+    except Exception:
+        pass
+    return "http"
+
+
 @blueprint.route("/admin/challenges/<challenge_id>", methods=["POST"])
 @admins_only
 @bypass_csrf_protection
 def admin_register_challenge(challenge_id: str):
     """Register (or re-register) a challenge with the orchestrator."""
     data = request.get_json(force=True)
+    # Auto-detect protocol from image if not explicitly set
+    if not data.get("protocol") and data.get("image"):
+        data["protocol"] = _detect_protocol(data["image"])
     try:
         resp = httpx.post(
             f"{ORCHESTRATOR_URL}/challenges",

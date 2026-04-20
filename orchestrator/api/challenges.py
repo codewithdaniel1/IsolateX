@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import httpx
 
 from orchestrator.db.session import get_db
-from orchestrator.db.models import Challenge
+from orchestrator.db.models import Challenge, Worker
 from orchestrator.api.schemas import ChallengeCreate, ChallengeResponse, ChallengeUpdate
 from orchestrator.api.deps import require_api_key
 
@@ -28,6 +29,22 @@ async def create_challenge(body: ChallengeCreate, db: AsyncSession = Depends(get
 async def list_challenges(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Challenge))
     return result.scalars().all()
+
+
+@router.get("/detect-protocol", dependencies=[Depends(require_api_key)])
+async def detect_protocol(image: str = Query(...), db: AsyncSession = Depends(get_db)):
+    """Ask any available worker to inspect the image and return http or tcp."""
+    result = await db.execute(select(Worker).where(Worker.active == True))
+    worker = result.scalars().first()
+    if not worker:
+        return {"protocol": "http", "image": image}
+    url = f"http://{worker.address}:{worker.agent_port}/detect-protocol"
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(url, params={"image": image})
+            return resp.json()
+    except Exception:
+        return {"protocol": "http", "image": image}
 
 
 @router.get("/{challenge_id}", response_model=ChallengeResponse,
