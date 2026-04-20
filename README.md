@@ -1,6 +1,10 @@
-# IsolateX
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="120" viewBox="0 0 520 120" role="img" aria-label="IsolateX">
+  <text x="0" y="82" fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="800" letter-spacing="-2">
+    Isolate<tspan fill="#38BDF8">X</tspan>
+  </text>
+</svg>
 
-**Per-team challenge instancing for CTFd.**
+**A CTFd plug-in for per-team challenge instancing.**
 
 IsolateX gives every team their own isolated challenge environment — players click "Launch," get a private endpoint and countdown timer, and the instance auto-stops when time runs out. It works with Docker for local dev and Kubernetes-based runtimes for production.
 
