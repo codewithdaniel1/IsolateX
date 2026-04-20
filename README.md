@@ -65,7 +65,7 @@ Restart CTFd. Then:
 3. Adjust runtime or tier per challenge if needed and click **Save**
 4. Done — players see the Launch button on registered challenges; all others are unaffected
 
-If your CTFd admin credentials are not the default `admin` / `admin`, set `CTFD_USER` and `CTFD_PASS` before running the import script so downloadable challenge files can be attached automatically.
+If your CTFd admin credentials are not the default `admin` / `admin`, set `CTFD_USER` and `CTFD_PASS` before running the import script so downloadable challenge files can be attached automatically. If the script cannot log in, it falls back to syncing files directly into the local Docker Compose CTFd instance.
 
 ### Starting from scratch
 

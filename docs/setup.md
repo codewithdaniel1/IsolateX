@@ -28,7 +28,7 @@ Restart CTFd. You'll see **IsolateX** in the admin navbar under Plugins.
 3. Adjust the runtime tier per challenge if needed and click **Save**
 4. Players immediately see the Launch/Stop/Renew panel on registered challenges; all other challenges are completely unaffected
 
-If your CTFd admin login is not `admin` / `admin`, export `CTFD_USER` and `CTFD_PASS` first so the file-upload step can log in to CTFd.
+If your CTFd admin login is not `admin` / `admin`, export `CTFD_USER` and `CTFD_PASS` first so the file-upload step can log in to CTFd. When that is unavailable, the script falls back to syncing files directly into the local Docker Compose CTFd instance.
 
 ---
 
@@ -102,7 +102,7 @@ Register challenges with the orchestrator (the import script handles this automa
 ./scripts/import-recruit-chals.sh
 ```
 
-The same script also attaches downloadable files for any challenge whose `challenge.json` includes a `files` array. If you ever need to re-sync attachments later, run `python3 scripts/upload-challenge-files.py`.
+The same script also attaches downloadable files for any challenge whose `challenge.json` includes a `files` array. Use `files: []` for challenges that should not expose downloads. If you ever need to re-sync attachments later, run `python3 scripts/upload-challenge-files.py`.
 
 Then go to **CTFd Admin → Plugins → IsolateX**:
 
