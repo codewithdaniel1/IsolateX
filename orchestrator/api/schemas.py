@@ -54,8 +54,7 @@ class ChallengeCreate(BaseModel):
     cpu_count: float = 1.0
     memory_mb: int = 512
     port: int = 8888
-    # Optional TTL override in seconds. If omitted, global default (1800s) is used.
-    # Players can renew instances but never past 2 hours from current time.
+    protocol: str = "http"
     ttl_seconds: Optional[int] = None
     flag_salt: str = Field(default_factory=lambda: __import__("secrets").token_hex(16))
     extra_config: Optional[str] = None
@@ -69,6 +68,7 @@ class ChallengeResponse(BaseModel):
     cpu_count: float
     memory_mb: int
     port: int
+    protocol: str = "http"
     ttl_seconds: Optional[int] = None
 
     class Config:
@@ -80,6 +80,7 @@ class ChallengeUpdate(BaseModel):
     runtime: Optional[RuntimeType] = None
     image: Optional[str] = None
     port: Optional[int] = None
+    protocol: Optional[str] = None
     cpu_count: Optional[float] = None
     memory_mb: Optional[int] = None
     ttl_seconds: Optional[int] = None

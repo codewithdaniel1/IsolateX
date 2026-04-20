@@ -69,31 +69,30 @@ async def launch(payload: LaunchPayload):
 
 @app.get("/ready/{instance_id}")
 async def ready(instance_id: str):
-    """Return 200 when the container's HTTP port is accepting connections."""
+    """Return 200 when the container's port is accepting TCP connections."""
     meta = adapter._instances.get(instance_id)
     if not meta:
         raise HTTPException(status_code=404, detail="unknown instance")
-    container_name = meta["container_name"]
-    container_port = meta["container_port"]
-    network = meta["network"]
     try:
-        ip = await _container_ip(container_name, network)
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            await client.get(f"http://{ip}:{container_port}/")
+        ip = await _container_ip(meta["container_name"], meta["network"])
+        _, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, meta["container_port"]), timeout=2.0
+        )
+        writer.close()
+        await writer.wait_closed()
         return {"ready": True}
     except Exception:
         raise HTTPException(status_code=503, detail="not ready")
 
 
 async def _container_ip(container_name: str, network: str) -> str:
-    import json
-    out = await asyncio.create_subprocess_exec(
+    proc = await asyncio.create_subprocess_exec(
         "docker", "inspect",
         "--format", f"{{{{.NetworkSettings.Networks.{network}.IPAddress}}}}",
         container_name,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
     )
-    stdout, _ = await out.communicate()
+    stdout, _ = await proc.communicate()
     ip = stdout.decode().strip()
     if not ip:
         raise RuntimeError(f"no IP for {container_name} on {network}")

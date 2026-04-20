@@ -280,7 +280,9 @@ async def _launch_on_worker(inst: Instance, challenge: Challenge, worker: Worker
             record = result.scalar_one()
             record.status = InstanceStatus.running
             record.backend_port = data["port"]
-            if settings.base_domain == "localhost":
+            if challenge.protocol == "tcp":
+                record.endpoint = f"tcp://127.0.0.1:{data['port']}"
+            elif settings.base_domain == "localhost":
                 record.endpoint = f"http://127.0.0.1:{data['port']}"
             else:
                 record.endpoint = f"https://{endpoint}" if settings.tls_enabled else f"http://{endpoint}"

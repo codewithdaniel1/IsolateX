@@ -77,6 +77,7 @@ class Challenge(Base):
     cpu_count    = Column(Float, default=1.0)
     memory_mb    = Column(Integer, default=512)
     port         = Column(Integer, nullable=False, default=8888)
+    protocol     = Column(String, nullable=False, default="http")  # "http" or "tcp"
     # TTL: None means use global default (settings.default_ttl_seconds = 1800)
     # Per-challenge override in seconds. Max enforced at renew time: 7200 (2 hours).
     ttl_seconds  = Column(Integer, nullable=True)

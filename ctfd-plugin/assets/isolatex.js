@@ -180,9 +180,16 @@
       setStatus(ctx, "Running", "text-success");
 
       if (data.endpoint) {
-        ctx.endpoint.innerHTML =
-          `Endpoint: <a href="${esc(data.endpoint)}" target="_blank" rel="noopener"
-            class="text-info">${esc(data.endpoint)}</a>`;
+        if (data.endpoint.startsWith("tcp://")) {
+          const parts = data.endpoint.slice(6).split(":");
+          const host = parts[0], port = parts[1];
+          ctx.endpoint.innerHTML =
+            `Connect: <code class="text-info">nc ${esc(host)} ${esc(port)}</code>`;
+        } else {
+          ctx.endpoint.innerHTML =
+            `Endpoint: <a href="${esc(data.endpoint)}" target="_blank" rel="noopener"
+              class="text-info">${esc(data.endpoint)}</a>`;
+        }
         show(ctx.endpoint);
       }
 
