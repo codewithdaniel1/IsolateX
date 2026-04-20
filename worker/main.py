@@ -73,13 +73,31 @@ async def ready(instance_id: str):
     meta = adapter._instances.get(instance_id)
     if not meta:
         raise HTTPException(status_code=404, detail="unknown instance")
-    port = meta["host_port"]
+    container_name = meta["container_name"]
+    container_port = meta["container_port"]
+    network = meta["network"]
     try:
+        ip = await _container_ip(container_name, network)
         async with httpx.AsyncClient(timeout=2.0) as client:
-            await client.get(f"http://127.0.0.1:{port}/")
+            await client.get(f"http://{ip}:{container_port}/")
         return {"ready": True}
     except Exception:
         raise HTTPException(status_code=503, detail="not ready")
+
+
+async def _container_ip(container_name: str, network: str) -> str:
+    import json
+    out = await asyncio.create_subprocess_exec(
+        "docker", "inspect",
+        "--format", f"{{{{.NetworkSettings.Networks.{network}.IPAddress}}}}",
+        container_name,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+    )
+    stdout, _ = await out.communicate()
+    ip = stdout.decode().strip()
+    if not ip:
+        raise RuntimeError(f"no IP for {container_name} on {network}")
+    return ip
 
 
 @app.delete("/destroy/{instance_id}")

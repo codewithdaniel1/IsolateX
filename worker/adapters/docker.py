@@ -99,7 +99,8 @@ class DockerAdapter(RuntimeAdapter):
         cmd += [req.image]
 
         await _run(*cmd)
-        metadata = {"host_port": host_port, "container_name": container_name}
+        metadata = {"host_port": host_port, "container_name": container_name,
+                    "container_port": req.port, "network": network}
         self._instances[req.instance_id] = metadata
         log.info("docker container started", instance_id=req.instance_id,
                  container=container_name, port=host_port)
