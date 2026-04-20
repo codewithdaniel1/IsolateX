@@ -261,8 +261,9 @@ async def _launch_on_worker(inst: Instance, challenge: Challenge, worker: Worker
             record.status = InstanceStatus.running
             record.backend_port = data["port"]
             # For local dev (base_domain == "localhost"), skip Traefik subdomain and use direct port
+            # Use 127.0.0.1 explicitly — browsers try IPv6 (::1) first for "localhost" and fail
             if settings.base_domain == "localhost":
-                record.endpoint = f"http://localhost:{data['port']}"
+                record.endpoint = f"http://127.0.0.1:{data['port']}"
             else:
                 record.endpoint = f"https://{endpoint}" if settings.tls_enabled else f"http://{endpoint}"
             await db.commit()
