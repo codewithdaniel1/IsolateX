@@ -56,12 +56,6 @@ Set per-challenge in the admin panel (Plugins → IsolateX):
 - **Bundled mode (`./setup.sh`)**: uses the first-party CTFd-IsolateX image from this repo (`ctfd/Dockerfile`) with the plugin pre-baked.
 - **External mode (`./setup.sh --external-ctfd`)**: installs/configures the IsolateX plugin in your existing CTFd deployment.
 
-Bundled CTFd base image behavior:
-- `setup.sh` tries `ctfd/ctfd:latest` first.
-- If that build fails, it automatically tries fallback candidates (or `CTFD_FALLBACK_IMAGES` if you set it).
-- You can override the first choice with `CTFD_BASE_IMAGE`, for example `CTFD_BASE_IMAGE=ctfd/ctfd:3.8.2 ./setup.sh`.
-- CI also validates this behavior in `.github/workflows/ctfd-build-fallback.yml`.
-
 ### Already have CTFd running? (most common case)
 
 ```bash
