@@ -34,7 +34,7 @@ CTFD_DB_COMPOSE_SERVICE = os.environ.get("CTFD_DB_COMPOSE_SERVICE", "ctfd-db")
 CHALS_DIR = Path(
     os.environ.get(
         "CHALS_DIR",
-        os.path.join(os.path.dirname(__file__), "../../recruit-chals"),
+        os.path.join(os.path.dirname(__file__), "../challenges"),
     )
 ).resolve()
 

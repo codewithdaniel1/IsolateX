@@ -82,7 +82,7 @@ Path expectations:
 - External container mode (`--external-ctfd-container`): IsolateX installs the plugin inside the container at `/opt/CTFd/CTFd/plugins/isolatex`.
 
 Then:
-1. Run `./scripts/import-recruit-chals.sh` to import challenges, auto-register instanced ones with the orchestrator, and upload any downloadable files declared in `challenge.json` (existing CTFd challenge names are skipped and not overwritten)
+1. Run `./scripts/import-challenges.sh [path-to-challenge-root]` to import challenges and upload any downloadable files declared in `challenge.json` (existing CTFd challenge names are skipped and not overwritten). If no path is passed, it defaults to `./challenges`. Challenges are registered with IsolateX only when their `challenge.json` includes `isolatex` metadata (for example `isolatex: { "image": "myctf/web1:latest", "port": 80 }`).
 2. Go to **Admin → Plugins → IsolateX** — only registered (instanced) challenges appear
 3. Adjust runtime or tier per challenge if needed and click **Save**
 4. Done — players see the Launch button on registered challenges; all others are unaffected

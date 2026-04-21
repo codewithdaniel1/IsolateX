@@ -33,7 +33,7 @@ Bundled mode details:
 After setup, restart CTFd only if your environment requires it. You should see **IsolateX** in the admin navbar under Plugins.
 
 **Enabling instancing on your challenges:**
-1. Run `scripts/import-recruit-chals.sh` to import challenges, register instanced ones with the orchestrator, and upload any downloadable files listed in `challenge.json` (existing CTFd challenge names are skipped and not overwritten)
+1. Run `scripts/import-challenges.sh [path-to-challenge-root]` to import challenges and upload any downloadable files listed in `challenge.json` (existing CTFd challenge names are skipped and not overwritten). If no path is passed, it defaults to `./challenges`. Challenges are registered with IsolateX only when `challenge.json` includes `isolatex` metadata (for example `isolatex: { "image": "myctf/web1:latest", "port": 80 }`).
 2. Go to **Admin → Plugins → IsolateX** — only challenges registered with the orchestrator appear here
 3. Adjust the runtime tier per challenge if needed and click **Save**
 4. Players immediately see the Launch/Stop/Renew panel on registered challenges; all other challenges are completely unaffected
@@ -116,10 +116,11 @@ The description can be anything — IsolateX automatically injects the instance 
 Register challenges with the orchestrator (the import script handles this automatically):
 
 ```bash
-./scripts/import-recruit-chals.sh
+./scripts/import-challenges.sh
 ```
 
 The same script also attaches downloadable files for any challenge whose `challenge.json` includes a `files` array. Use `files: []` for challenges that should not expose downloads. If you ever need to re-sync attachments later, run `python3 scripts/upload-challenge-files.py`.
+For IsolateX registration, add `isolatex` metadata to each instanced challenge's `challenge.json` (for example `isolatex: { "image": "myctf/web1:latest", "port": 80 }`).
 
 Then go to **CTFd Admin → Plugins → IsolateX**:
 

@@ -51,13 +51,18 @@ class SetupAutomationTests(unittest.TestCase):
         self.assertIn("This cannot be enabled from the IsolateX page.", setup_text)
         self.assertIn("This cannot be enabled from the IsolateX page.", plugin_text)
 
-    def test_import_scripts_skip_existing_challenge_names(self):
-        api_import = read("scripts/import-to-ctfd.sh")
-        db_import = read("scripts/import-to-ctfd-db.sh")
-        py_import = read("scripts/import-to-ctfd.py")
-        self.assertIn("already exists in CTFd", api_import)
-        self.assertIn("already exists in CTFd", db_import)
-        self.assertIn("skip", py_import)
+    def test_generic_import_script_skips_existing_challenge_names(self):
+        generic_import = read("scripts/import-challenges.py")
+        self.assertIn("already exists in CTFd", generic_import)
+        self.assertIn("skip", generic_import)
+
+    def test_docs_and_admin_reference_generic_import_script(self):
+        readme = read("README.md")
+        setup_doc = read("docs/setup.md")
+        admin_template = read("ctfd-plugin/templates/admin.html")
+        self.assertIn("scripts/import-challenges.sh", readme)
+        self.assertIn("scripts/import-challenges.sh", setup_doc)
+        self.assertIn("scripts/import-challenges.sh", admin_template)
 
     def test_setup_script_does_not_print_api_key_in_manual_fallback(self):
         text = read("setup.sh")

@@ -104,10 +104,9 @@ class SecurityRegressionTests(unittest.TestCase):
 
     def test_helper_scripts_do_not_default_to_known_api_key(self):
         for path in (
-            "scripts/import-recruit-chals.sh",
-            "scripts/import-to-ctfd.sh",
-            "scripts/import-to-ctfd-db.sh",
-            "scripts/import-to-ctfd.py",
+            "scripts/import-challenges.py",
+            "scripts/import-challenges.sh",
+            "scripts/upload-challenge-files.py",
             "docs/setup.md",
         ):
             self.assertNotIn("dev-api-key-change-in-prod", read(path), path)
