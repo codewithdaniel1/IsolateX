@@ -24,7 +24,7 @@ On challenges without instancing enabled: nothing — the plugin is completely i
 
 | Runtime | Container tech | Isolation | Best for |
 |---|---|---|---|
-| `docker` | Docker (runc) | Basic | Web, crypto, reversing — local dev |
+| `docker` | Docker | Basic | Web, crypto, reversing — local dev |
 | `kctf` | Kubernetes pod + nsjail | Medium | Web, pwn with moderate risk |
 | `kata-firecracker` | Kubernetes + Kata (Firecracker backend) | Strongest | Kernel pwn, AI code execution, RCE |
 
@@ -43,7 +43,7 @@ Set per-challenge in the admin panel (Plugins → IsolateX):
 
 | Tier | CPU | Memory | Runtime | When to use |
 |---|---|---|---|---|
-| Tier 1 | 1 core | 512 MB | Docker / kCTF | Static web, trivial challenges |
+| Tier 1 | 1 core | 512 MB | Docker | Static web, trivial challenges |
 | Tier 2 | 2 cores | 1 GB | kCTF | Typical web / reversing / pwn |
 | Tier 3 | 4 cores | 2 GB | Kata-FC | AI, compilation, kernel challenges |
 
