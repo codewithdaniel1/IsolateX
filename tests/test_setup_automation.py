@@ -70,6 +70,13 @@ class SetupAutomationTests(unittest.TestCase):
         self.assertIn("/traefik/config", text)
         self.assertIn('has("flag")', text)
 
+    def test_bundled_ctfd_image_bakes_isolatex_plugin(self):
+        dockerfile = read("ctfd/Dockerfile")
+        compose = read("docker-compose.yml")
+        self.assertIn("COPY ctfd-plugin /opt/CTFd/CTFd/plugins/isolatex", dockerfile)
+        self.assertIn("context: .", compose)
+        self.assertIn("dockerfile: ctfd/Dockerfile", compose)
+
 
 if __name__ == "__main__":
     unittest.main()

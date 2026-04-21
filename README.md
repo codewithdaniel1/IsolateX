@@ -51,6 +51,11 @@ Set per-challenge in the admin panel (Plugins → IsolateX):
 
 ## Quick start
 
+### Integration modes
+
+- **Bundled mode (`./setup.sh`)**: uses the first-party CTFd-IsolateX image from this repo (`ctfd/Dockerfile`) with the plugin pre-baked.
+- **External mode (`./setup.sh --external-ctfd`)**: installs/configures the IsolateX plugin in your existing CTFd deployment.
+
 ### Already have CTFd running? (most common case)
 
 ```bash

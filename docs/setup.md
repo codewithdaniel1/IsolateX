@@ -26,6 +26,10 @@ Path expectations:
 - External filesystem mode (`--external-ctfd-path`): pass the CTFd repo root path (the directory that contains `CTFd/`), and IsolateX installs the plugin to `CTFd/plugins/isolatex`.
 - External container mode (`--external-ctfd-container`): IsolateX installs the plugin inside the container at `/opt/CTFd/CTFd/plugins/isolatex`.
 
+Bundled mode details:
+- The CTFd image built from `ctfd/Dockerfile` includes the IsolateX plugin by default.
+- In local development, `docker-compose.yml` also bind-mounts `./ctfd-plugin` into CTFd so plugin edits apply immediately.
+
 After setup, restart CTFd only if your environment requires it. You should see **IsolateX** in the admin navbar under Plugins.
 
 **Enabling instancing on your challenges:**
