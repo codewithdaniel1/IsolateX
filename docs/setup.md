@@ -21,6 +21,11 @@ Optional explicit targeting (recommended if multiple CTFd instances are running)
 ./setup.sh --external-ctfd --external-ctfd-path <path-to-CTFd>
 ```
 
+Path expectations:
+- Bundled mode (`./setup.sh` with no external flags): CTFd comes from this repo at `./ctfd`.
+- External filesystem mode (`--external-ctfd-path`): pass the CTFd repo root path (the directory that contains `CTFd/`), and IsolateX installs the plugin to `CTFd/plugins/isolatex`.
+- External container mode (`--external-ctfd-container`): IsolateX installs the plugin inside the container at `/opt/CTFd/CTFd/plugins/isolatex`.
+
 After setup, restart CTFd only if your environment requires it. You should see **IsolateX** in the admin navbar under Plugins.
 
 **Enabling instancing on your challenges:**
@@ -38,7 +43,7 @@ After setup/import, run a live security smoke test:
 
 ---
 
-## Part 1 — Fresh install (Docker only, local dev)
+## Part 1 — Fresh install (auto-detected runtimes)
 
 The `setup.sh` script installs and configures everything. Safe to re-run — existing tools are updated, not reinstalled.
 
@@ -56,7 +61,7 @@ cd IsolateX
 | Linux host | + kubectl, k3s, kCTF namespace + NetworkPolicy | `docker`, `kctf` |
 | Linux + KVM (`/dev/kvm`) | + Kata Containers, Firecracker, `kata-firecracker` RuntimeClass | + `kata-firecracker` |
 
-> **macOS / Windows:** Only `docker` runtime works locally. Kubernetes-based runtimes (`kctf`, `kata-firecracker`) require a **Linux host** with **KVM hardware virtualization** enabled (VT-x for Intel, AMD-V for AMD — enable in BIOS). For production, use a Linux server or cloud VM (AWS, GCP, DigitalOcean, Hetzner).
+> **macOS / Windows:** Only `docker` runtime works locally. `kctf` requires a **Linux host**. `kata-firecracker` requires **Linux + KVM hardware virtualization** (VT-x for Intel, AMD-V for AMD — enable in BIOS). For production, use a Linux server or cloud VM (AWS, GCP, DigitalOcean, Hetzner).
 > If a runtime is disabled in the IsolateX admin page, that toggle cannot be enabled from the page itself. Fix host prerequisites and rerun `./setup.sh`.
 
 After the script finishes:
@@ -74,8 +79,8 @@ Everything runs in Docker Compose: orchestrator, a Docker worker, CTFd, Postgres
 ### Step 1 — Start the stack
 
 ```bash
-git clone https://github.com/osiris/isolatex
-cd isolatex
+git clone https://github.com/codewithdaniel1/IsolateX
+cd IsolateX
 
 # Create secrets for compose (or run ./setup.sh once to auto-generate .env)
 cat > .env <<EOF
@@ -245,7 +250,6 @@ REDIS_URL=redis://redis:6379/0
 BASE_DOMAIN=ctf.yourdomain.com
 TLS_ENABLED=true
 DEFAULT_TTL_SECONDS=1800    # 30 min default, override per-challenge in admin UI
-MAX_TTL_SECONDS=3600        # 1 hour renew cap
 
 # CTFd plugin
 ISOLATEX_URL=http://orchestrator:8080
@@ -334,8 +338,8 @@ For local dev, the endpoint is `http://localhost:<port>` directly.
 - Open browser devtools → Network tab → click the button → check the response
 - Make sure you are logged in to CTFd (the plugin uses your session)
 
-**Renew button says "already at maximum"**
-- Renew resets TTL to the original duration from *now*, capped at `started_at + ttl`. If the instance was launched recently and the TTL hasn't dropped much, there is nothing to renew.
+**Renew extends longer than expected**
+- Renew resets `expires_at` to `now + ttl_seconds` for the challenge. If players keep renewing, the instance lifetime can keep extending.
 
 **CTFd plugin not loading**
 - Make sure `httpx` is installed in the CTFd container: `pip install httpx`

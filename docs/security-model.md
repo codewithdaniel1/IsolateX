@@ -21,8 +21,7 @@ Weakest isolation — use only for challenges where players cannot get shell acc
 
 - Containers run on an isolated bridge network with ICC (inter-container communication) disabled
 - Host port binding only — not reachable from other containers
-- `--cap-drop ALL` applied (unless the image requires privileges; configurable via `extra_config`)
-- `--security-opt no-new-privileges:true`
+- `--cap-drop ALL` and `--security-opt no-new-privileges:true` are available via `extra_config` (`cap_drop=true`)
 - CPU and memory limits enforced
 - **Not recommended** for: pwn, RCE, kernel exploitation, anything where a player can run arbitrary commands inside the container
 
@@ -70,10 +69,10 @@ Properties:
 | Gateway → instance's port | Yes |
 | Instance → another instance | **No** |
 | Instance → orchestrator API | **No** |
-| Instance → worker agent | **No** |
-| Instance → Kubernetes API | **No** |
-| Instance → host metadata (AWS IMDS, etc.) | **No** |
-| Instance → internet | Configurable (off by default) |
+| Instance → worker agent | No (default compose); must remain blocked in production firewalling |
+| Instance → Kubernetes API | **No** (kCTF/Kata workers use `automountServiceAccountToken: false`) |
+| Instance → host metadata (AWS IMDS, etc.) | Must be blocked at host/network layer in production |
+| Instance → internet | Configurable by network policy/runtime setup |
 | Worker → orchestrator | Yes (API key required) |
 | Orchestrator → worker | Yes (internal network only) |
 

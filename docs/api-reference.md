@@ -2,10 +2,11 @@
 
 Base URL: `http://orchestrator:8080` (local dev: `http://localhost:8080`)
 
-All endpoints require:
+All control-plane endpoints require:
 ```
 x-api-key: <your API key>
 ```
+Exception: `GET /health` is intentionally public for health checks.
 
 Interactive docs (Swagger UI): `http://localhost:8080/docs`
 
@@ -52,8 +53,8 @@ Returns the new instance object.
 ```
 POST /instances/{instance_id}/renew
 ```
-Resets the TTL back to the original duration from now, capped at `started_at + ttl_seconds`.  
-Returns `409` if the instance is already at the cap (nothing to renew).
+Resets `expires_at` to `now + ttl_seconds` for that challenge.  
+Returns `409` if renewing would not extend the current expiry.
 
 Returns:
 ```json
@@ -198,6 +199,33 @@ Called automatically by the worker agent every 30s.
 GET /traefik/config
 ```
 Returns dynamic route config for Traefik's HTTP provider. Traefik polls this every 5 seconds. Not for direct use.
+
+---
+
+## Settings
+
+### Get settings
+```
+GET /settings
+```
+
+Returns:
+```json
+{
+  "default_ttl_seconds": 1800
+}
+```
+
+### Update settings
+```
+PATCH /settings
+```
+
+```json
+{
+  "default_ttl_seconds": 3600
+}
+```
 
 ---
 

@@ -28,7 +28,7 @@ On challenges without instancing enabled: nothing — the plugin is completely i
 | `kctf` | Kubernetes pod + nsjail | Medium | Web, pwn with moderate risk |
 | `kata-firecracker` | Kubernetes + Kata (Firecracker backend) | Strongest | Kernel pwn, AI code execution, RCE |
 
-> **macOS / Windows:** Only `docker` runtime is available locally. `kctf` and `kata-firecracker` require a Linux host with KVM hardware virtualization (VT-x / AMD-V enabled in BIOS).
+> **macOS / Windows:** Only `docker` runtime is available locally. `kctf` requires a Linux host. `kata-firecracker` requires Linux + KVM hardware virtualization (VT-x / AMD-V enabled in BIOS).
 
 **Choosing a runtime:**
 - Start with `docker` for local dev — no Kubernetes needed.
@@ -70,6 +70,11 @@ If auto-detection is ambiguous, pin it explicitly:
 # or
 ./setup.sh --external-ctfd --external-ctfd-path /path/to/CTFd
 ```
+
+Path expectations:
+- Bundled mode (`./setup.sh` with no external flags): CTFd comes from this repo at `./ctfd`.
+- External filesystem mode (`--external-ctfd-path`): pass the CTFd repo root path (the directory that contains `CTFd/`), and IsolateX installs the plugin to `CTFd/plugins/isolatex`.
+- External container mode (`--external-ctfd-container`): IsolateX installs the plugin inside the container at `/opt/CTFd/CTFd/plugins/isolatex`.
 
 Then:
 1. Run `./scripts/import-recruit-chals.sh` to import challenges, auto-register instanced ones with the orchestrator, and upload any downloadable files declared in `challenge.json` (existing CTFd challenge names are skipped and not overwritten)

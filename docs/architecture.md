@@ -38,7 +38,7 @@
 A Flask blueprint mounted into CTFd. It:
 - Injects `isolatex.js` into every CTFd HTML page via an `after_request` hook
 - Exposes routes that the player's browser calls: `GET/POST/DELETE /isolatex/instance/<challenge_id>` and `/restart`, `/renew`
-- Exposes admin routes: `GET/POST /isolatex/admin/config`, `GET/PATCH /isolatex/admin/challenges/<id>`
+- Exposes admin routes: `GET/POST /isolatex/admin/config`, `GET /isolatex/admin/runtime-capabilities`, `GET/PATCH /isolatex/admin/challenges/<id>`
 - Proxies all calls to the orchestrator using a shared API key
 
 The player UI (`isolatex.js`) is a vanilla JS IIFE — no framework. It uses `MutationObserver` to detect when CTFd dynamically renders a challenge modal, then renders the instance panel inside it.
@@ -63,7 +63,7 @@ A FastAPI agent that runs on each host. The orchestrator calls `/launch` and `/d
 | `kctf` | `adapters/kctf.py` | Creates a Kubernetes pod with nsjail + network policy |
 | `kata-firecracker` | `adapters/kata.py` | Creates a K8s pod with `kata-firecracker` RuntimeClass (Kata + Firecracker) |
 
-Workers advertise their runtime type. The orchestrator only sends `docker` challenges to Docker workers, `kata` challenges to Kata workers, etc.
+Workers advertise their runtime type. The orchestrator only sends `docker` challenges to Docker workers, `kctf` challenges to kCTF workers, and `kata-firecracker` challenges to Kata workers.
 
 ---
 
@@ -82,7 +82,7 @@ Workers advertise their runtime type. The orchestrator only sends `docker` chall
 5.  Worker receives POST /launch → runs container / creates pod
 6.  Worker returns { port: <host_port> }
 7.  Orchestrator:
-    a. Registers route subdomain via Traefik (or uses localhost:<port> for local dev)
+    a. Registers route subdomain via Traefik (or uses localhost:<port> for local dev endpoint links)
     b. Updates Instance: status=running, endpoint=<url>
 8.  isolatex.js polls GET /isolatex/instance/<challenge_id> every 5s
 9.  Status=running → renders endpoint link + countdown timer
@@ -94,8 +94,8 @@ Workers advertise their runtime type. The orchestrator only sends `docker` chall
 ```
 Launch   → expires_at = started_at + ttl_seconds
 
-Renew    → expires_at = min(now + ttl_seconds, started_at + ttl_seconds)
-           (resets to original duration from now, cannot exceed original cap)
+Renew    → expires_at = now + ttl_seconds
+           (resets to full challenge TTL from the current time)
 
 Restart  → old instance destroyed
            new instance: expires_at = now + ttl_seconds (full TTL reset)

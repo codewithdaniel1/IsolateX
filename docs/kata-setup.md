@@ -1,7 +1,7 @@
 # Kata + Firecracker Setup Guide
 
 > **Operator guide** — This document is for infrastructure operators setting up Kata Containers with the Firecracker backend manually.
-> For most users, run `./setup.sh --kata-fc` instead — it handles everything on this page automatically.
+> For most users, run `./setup.sh` instead — on Linux hosts with `/dev/kvm`, it auto-installs Kata + Firecracker.
 > See [setup.md](setup.md) for the full quickstart.
 >
 > **Requirements:** Linux host with KVM hardware virtualization enabled (VT-x for Intel, AMD-V for AMD — set in BIOS). Not available on macOS or Windows without a Linux VM. Firecracker requires `/dev/kvm` to be accessible.
