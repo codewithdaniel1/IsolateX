@@ -7,6 +7,7 @@ from orchestrator.db.session import get_db
 from orchestrator.db.models import Challenge, Worker
 from orchestrator.api.schemas import ChallengeCreate, ChallengeResponse, ChallengeUpdate
 from orchestrator.api.deps import require_api_key
+from orchestrator.config import settings
 
 router = APIRouter(prefix="/challenges", tags=["challenges"])
 
@@ -41,7 +42,11 @@ async def detect_protocol(image: str = Query(...), db: AsyncSession = Depends(ge
     url = f"http://{worker.address}:{worker.agent_port}/detect-protocol"
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(url, params={"image": image})
+            resp = await client.get(
+                url,
+                params={"image": image},
+                headers={"x-api-key": settings.api_key},
+            )
             return resp.json()
     except Exception:
         return {"protocol": "http", "image": image}

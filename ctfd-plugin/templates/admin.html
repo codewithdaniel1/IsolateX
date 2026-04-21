@@ -52,6 +52,7 @@
             Only challenges registered with the orchestrator are shown here. Instance TTL is <strong>2 hours</strong> — players can click <strong>Renew</strong> to reset the timer.
             To add a challenge to IsolateX, register it via <code>scripts/import-recruit-chals.sh</code> or the orchestrator API.
           </p>
+          <div id="runtime-cap-notice" class="mt-3" style="display:none"></div>
         </div>
       </div>
     </div>
@@ -110,8 +111,16 @@
     { value: "kctf",             label: "kCTF",    badge: "bg-success" },
     { value: "kata-firecracker", label: "Kata-FC", badge: "bg-danger"  },
   ];
+  let runtimeCaps = {
+    docker: { enabled: true, reason: "" },
+    kctf: { enabled: true, reason: "" },
+    "kata-firecracker": { enabled: true, reason: "" },
+  };
 
   function runtimeMeta(v) { return RUNTIMES.find(r => r.value === v) || RUNTIMES[0]; }
+  function esc(s) { return String(s || "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  function runtimeEnabled(v) { return runtimeCaps[v]?.enabled !== false; }
+  function runtimeReason(v) { return runtimeCaps[v]?.reason || ""; }
 
   async function api(url, method, body) {
     const r = await fetch(url, {
@@ -127,6 +136,37 @@
   }
 
   let allRows = [];
+
+  async function loadRuntimeCapabilities() {
+    try {
+      const caps = await api("/isolatex/admin/runtime-capabilities");
+      if (caps && typeof caps === "object") runtimeCaps = { ...runtimeCaps, ...caps };
+    } catch(e) {
+      console.warn("runtime capabilities unavailable", e);
+    }
+    renderRuntimeCapabilityNotice();
+  }
+
+  function renderRuntimeCapabilityNotice() {
+    const el = document.getElementById("runtime-cap-notice");
+    const disabled = RUNTIMES
+      .filter(r => r.value !== "docker" && !runtimeEnabled(r.value))
+      .map(r => `<li><strong>${r.label} disabled:</strong> ${esc(runtimeReason(r.value) || "Unavailable on this host.")}</li>`);
+
+    if (!disabled.length) {
+      el.style.display = "none";
+      el.innerHTML = "";
+      return;
+    }
+
+    el.style.display = "";
+    el.innerHTML = `
+      <div class="alert alert-warning py-2 mb-0">
+        <div class="small mb-1"><strong>Runtime availability notice</strong></div>
+        <ul class="small mb-0 ps-3">${disabled.join("")}</ul>
+      </div>
+    `;
+  }
 
   async function loadChallenges() {
     const tbody = document.getElementById("chal-tbody");
@@ -159,7 +199,13 @@
         </td>
         <td class="align-middle">
           <select class="form-select form-select-sm ix-runtime">
-            ${RUNTIMES.map(r => `<option value="${r.value}"${c.runtime === r.value ? " selected" : ""}>${r.label}</option>`).join("")}
+            ${RUNTIMES.map(r => {
+              const disabled = !runtimeEnabled(r.value) ? " disabled" : "";
+              const title = !runtimeEnabled(r.value) && runtimeReason(r.value)
+                ? ` title="${escAttr(runtimeReason(r.value))}"`
+                : "";
+              return `<option value="${r.value}"${c.runtime === r.value ? " selected" : ""}${disabled}${title}>${r.label}</option>`;
+            }).join("")}
           </select>
         </td>
         <td class="align-middle">
@@ -191,6 +237,12 @@
 
     msg.textContent = "Saving…"; msg.className = "ix-row-msg ms-1 small d-block text-muted";
 
+    if (!runtimeEnabled(runtime)) {
+      msg.textContent = runtimeReason(runtime) || "Runtime unavailable on this host.";
+      msg.className = "ix-row-msg ms-1 small d-block text-danger";
+      return;
+    }
+
     try {
       await api(`/isolatex/admin/challenges/${id}`, "POST", {
         id, name, runtime, image,
@@ -215,7 +267,16 @@
     renderTable(filtered);
   });
 
-  loadChallenges();
+  function escAttr(s) {
+    return esc(String(s || ""));
+  }
+
+  async function boot() {
+    await loadRuntimeCapabilities();
+    await loadChallenges();
+  }
+
+  boot();
 })();
 </script>
 {% endblock %}

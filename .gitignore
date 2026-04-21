@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 *.pyd
 .env
+ctfd-plugin/.isolatex.env
 *.egg-info/
 dist/
 build/

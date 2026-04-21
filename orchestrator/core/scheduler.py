@@ -44,7 +44,7 @@ async def _destroy_instance(db: AsyncSession, inst: Instance):
             url = f"http://{worker.address}:{worker.agent_port}/destroy/{inst.id}"
             try:
                 async with httpx.AsyncClient(timeout=15.0) as client:
-                    resp = await client.delete(url)
+                    resp = await client.delete(url, headers={"x-api-key": settings.api_key})
                     if resp.status_code not in (200, 204, 404):
                         log.warning("worker destroy returned unexpected status",
                                     status=resp.status_code, instance_id=str(inst.id))

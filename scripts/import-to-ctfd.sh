@@ -3,13 +3,21 @@
 
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ORCHESTRATOR_URL="${1:-http://localhost:8080}"
 CTFD_URL="${2:-http://localhost:8000}"
-ORCHESTRATOR_KEY="${3:-dev-api-key-change-in-prod}"
+ORCHESTRATOR_KEY="${3:-${API_KEY:-}}"
+if [ -z "$ORCHESTRATOR_KEY" ] && [ -f "$ROOT_DIR/.env" ]; then
+    ORCHESTRATOR_KEY="$(grep -E '^API_KEY=' "$ROOT_DIR/.env" | tail -1 | cut -d= -f2-)"
+fi
+if [ -z "$ORCHESTRATOR_KEY" ]; then
+    echo "ERROR: API key required (arg3/API_KEY/$ROOT_DIR/.env)."
+    exit 1
+fi
 
 echo "Fetching challenges from orchestrator..."
 challenges=$(curl -s "$ORCHESTRATOR_URL/challenges" \
-  -H "x-api-key: $ORCHESTRATOR_KEY" | jq -r '.[]')
+  -H "x-api-key: $ORCHESTRATOR_KEY" | jq -c '.[]')
 
 if [ -z "$challenges" ]; then
     echo "No challenges found in orchestrator"
@@ -38,11 +46,27 @@ fi
 echo "Creating challenges in CTFd..."
 echo ""
 
+# Load existing challenge names so imports are idempotent.
+existing_names=$(curl -s "$CTFD_URL/api/v1/challenges" \
+    -H "Authorization: Bearer $admin_token" \
+    -H "Content-Type: application/json" | jq -r '.data[]?.name')
+
+created=0
+skipped=0
+failed=0
+
 # Import each challenge
-echo "$challenges" | while IFS= read -r chal_json; do
+while IFS= read -r chal_json; do
+    [ -n "$chal_json" ] || continue
     chal_id=$(echo "$chal_json" | jq -r '.id')
     chal_name=$(echo "$chal_json" | jq -r '.name')
     chal_runtime=$(echo "$chal_json" | jq -r '.runtime')
+
+    if grep -Fqx -- "$chal_name" <<< "$existing_names"; then
+        echo "Skipping: $chal_name (already exists in CTFd)"
+        skipped=$((skipped + 1))
+        continue
+    fi
 
     # Map runtime to category
     case "$chal_runtime" in
@@ -72,11 +96,15 @@ echo "$challenges" | while IFS= read -r chal_json; do
 
     if [ -n "$chal_db_id" ]; then
         echo "  ✓ Created (ID: $chal_db_id)"
+        created=$((created + 1))
+        existing_names="${existing_names}"$'\n'"${chal_name}"
     else
         echo "  ✗ Failed: $(echo "$response" | jq -r '.errors // .message // "Unknown error"')"
+        failed=$((failed + 1))
     fi
-done
+done < <(printf "%s\n" "$challenges")
 
 echo ""
 echo "Import complete!"
+echo "Created: $created, skipped existing: $skipped, failed: $failed"
 echo "Visit http://localhost:8000/challenges to see the challenges"

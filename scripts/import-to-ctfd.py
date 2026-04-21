@@ -5,11 +5,29 @@ import sys
 import subprocess
 import json
 import requests
-from urllib.parse import urljoin
+import os
+from pathlib import Path
+from typing import Optional
+
+
+def _load_api_key(explicit: Optional[str]) -> str:
+    if explicit:
+        return explicit
+    env_key = os.environ.get("API_KEY")
+    if env_key:
+        return env_key
+
+    root_env = Path(__file__).resolve().parents[1] / ".env"
+    if root_env.exists():
+        for line in root_env.read_text(encoding="utf-8").splitlines():
+            if line.startswith("API_KEY="):
+                return line.split("=", 1)[1].strip()
+
+    raise RuntimeError("API key required (arg2/API_KEY/.env)")
 
 def main():
     orchestrator_url = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8080"
-    orchestrator_key = sys.argv[2] if len(sys.argv) > 2 else "dev-api-key-change-in-prod"
+    orchestrator_key = _load_api_key(sys.argv[2] if len(sys.argv) > 2 else None)
     db_host = sys.argv[3] if len(sys.argv) > 3 else "127.0.0.1"
     db_port = sys.argv[4] if len(sys.argv) > 4 else "3306"
     db_user = sys.argv[5] if len(sys.argv) > 5 else "ctfd"
@@ -32,13 +50,48 @@ def main():
     print(f"Found {len(challenges)} challenges")
     print("Importing into CTFd database...\n")
 
-    # Build SQL statements
-    sql_statements = []
-    sql_statements.append("SET FOREIGN_KEY_CHECKS=0;")
+    # Load existing CTFd challenge names so imports are idempotent.
+    existing_proc = subprocess.run(
+        [
+            "mysql",
+            "-h",
+            db_host,
+            "-P",
+            db_port,
+            "-u",
+            db_user,
+            f"-p{db_pass}",
+            db_name,
+            "-Nse",
+            "SELECT name FROM challenges;",
+        ],
+        capture_output=True,
+        timeout=10,
+    )
+    if existing_proc.returncode != 0:
+        print(f"✗ Failed to read existing challenge names: {existing_proc.stderr.decode()}")
+        return 1
+
+    existing_names = {
+        line.strip()
+        for line in existing_proc.stdout.decode().splitlines()
+        if line.strip()
+    }
+    print(f"Found {len(existing_names)} existing challenges in CTFd")
+
+    # Build SQL statements (skip by challenge name if it already exists).
+    sql_statements = ["SET FOREIGN_KEY_CHECKS=0;"]
+    created = 0
+    skipped = 0
 
     for chal in challenges:
         chal_id = chal["id"]
         chal_name = chal["name"]
+        if chal_name in existing_names:
+            skipped += 1
+            print(f"  - skip {chal_name} (already exists in CTFd)")
+            continue
+
         description = f'Launched via IsolateX <div data-isolatex-challenge="{chal_id}"></div>'
 
         # Escape quotes for SQL
@@ -49,9 +102,15 @@ def main():
         sql = f"""INSERT INTO challenges (name, description, category, value, type, state)
                   VALUES ('{chal_name}', '{description}', 'Web', 100, 'standard', 'visible');"""
         sql_statements.append(sql)
-        print(f"  ✓ {chal_name}")
+        existing_names.add(chal["name"])
+        created += 1
+        print(f"  ✓ create {chal_name}")
 
     sql_statements.append("SET FOREIGN_KEY_CHECKS=1;")
+
+    if created == 0:
+        print("\nNo new challenges to import. Existing CTFd challenges were left unchanged.")
+        return 0
 
     # Execute SQL
     sql_script = "\n".join(sql_statements)
@@ -66,6 +125,7 @@ def main():
 
         if proc.returncode == 0:
             print("\n✓ Challenges imported successfully")
+            print(f"  Created: {created}, skipped existing: {skipped}")
             print("\nChallenges in CTFd:")
 
             # Verify

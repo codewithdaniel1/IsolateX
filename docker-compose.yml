@@ -65,9 +65,9 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://isolatex:isolatex@postgres:5432/isolatex
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: dev-secret-change-in-prod
-      API_KEY: dev-api-key-change-in-prod
-      FLAG_HMAC_SECRET: dev-flag-secret-change-in-prod
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
+      API_KEY: ${API_KEY:?API_KEY must be set in .env}
+      FLAG_HMAC_SECRET: ${FLAG_HMAC_SECRET:?FLAG_HMAC_SECRET must be set in .env}
       GATEWAY_TYPE: traefik
       BASE_DOMAIN: localhost
       TLS_ENABLED: "false"
@@ -98,7 +98,7 @@ services:
     environment:
       RUNTIME: docker
       ORCHESTRATOR_URL: http://orchestrator:8080
-      ORCHESTRATOR_API_KEY: dev-api-key-change-in-prod
+      ORCHESTRATOR_API_KEY: ${API_KEY:?API_KEY must be set in .env}
       WORKER_ID: worker-docker-01
       WORKER_ADVERTISE_ADDRESS: host.docker.internal
       DOCKER_NETWORK: isolatex_challenges
@@ -113,8 +113,6 @@ services:
         condition: service_healthy
     networks:
       - isolatex_internal
-    ports:
-      - "9090:9090"
 
   # ── CTFd ───────────────────────────────────────────────────────────────────
   ctfd:
@@ -125,9 +123,9 @@ services:
     environment:
       DATABASE_URL: mysql+pymysql://ctfd:ctfd@ctfd-db/ctfd
       REDIS_URL: redis://redis:6379/1
-      SECRET_KEY: dev-ctfd-secret-change-in-prod
+      SECRET_KEY: ${CTFD_SECRET_KEY:?CTFD_SECRET_KEY must be set in .env}
       ISOLATEX_URL: http://orchestrator:8080
-      ISOLATEX_API_KEY: dev-api-key-change-in-prod
+      ISOLATEX_API_KEY: ${API_KEY:?API_KEY must be set in .env}
     depends_on:
       - ctfd-db
       - redis

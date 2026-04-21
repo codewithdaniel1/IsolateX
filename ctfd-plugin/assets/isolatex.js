@@ -109,6 +109,10 @@
     panel.innerHTML = `
       <div class="card card-body bg-dark text-white mt-3 ix-panel">
         <h6 class="mb-2 ix-title">Live Instance</h6>
+        <p class="small text-warning mb-2">
+          Team mode notice: this instance is shared by your team.
+          Restarting or stopping it affects your teammates too.
+        </p>
         <p class="ix-status text-muted small mb-1">Checking…</p>
         <p class="ix-endpoint mb-1" style="display:none"></p>
         <p class="ix-ttl text-warning small mb-2" style="display:none"></p>
@@ -251,6 +255,7 @@
   }
 
   async function doRestart(ctx) {
+    if (!confirm("Restart this team instance? This affects your teammates too.")) return;
     disableAll(ctx);
     setStatus(ctx, "Restarting…");
     try {
@@ -278,7 +283,7 @@
   }
 
   async function doStop(ctx) {
-    if (!confirm("Stop your instance? You can launch a new one anytime.")) return;
+    if (!confirm("Stop this team instance? This affects your teammates too.")) return;
     disableAll(ctx);
     setStatus(ctx, "Stopping…");
     try {
@@ -391,14 +396,10 @@
       },
     };
 
-    // CTFd CSRF: for JSON requests it checks session nonce == CSRF-Token header
+    // CTFd CSRF: for JSON requests it checks session nonce == CSRF-Token header.
     const nonce = window.init?.csrfNonce;
-    if (nonce) {
-      opts.headers["CSRF-Token"] = nonce;
-    } else {
-      // Bypass CSRF entirely using Authorization header (no session needed)
-      opts.headers["Authorization"] = "Token isolatex-bypass";
-    }
+    if (!nonce) throw new Error("Missing CSRF nonce. Refresh and try again.");
+    opts.headers["CSRF-Token"] = nonce;
 
     const resp = await fetch(url, opts);
     let data;

@@ -14,10 +14,11 @@ Actual worker runtime values in code:
 docker | kctf | kata-firecracker
 """
 import asyncio
+import hmac
 import httpx
 import structlog
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional
 
@@ -55,7 +56,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=f"IsolateX Worker ({settings.runtime})", lifespan=lifespan)
 
 
-@app.post("/launch")
+def require_worker_api_key(x_api_key: str = Header(default="")):
+    expected = settings.orchestrator_api_key
+    if not expected or not hmac.compare_digest(x_api_key, expected):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid api key")
+
+
+@app.post("/launch", dependencies=[Depends(require_worker_api_key)])
 async def launch(payload: LaunchPayload):
     req = LaunchRequest(**payload.model_dump())
     try:
@@ -67,7 +74,7 @@ async def launch(payload: LaunchPayload):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/ready/{instance_id}")
+@app.get("/ready/{instance_id}", dependencies=[Depends(require_worker_api_key)])
 async def ready(instance_id: str):
     """Return 200 when the container's port is accepting TCP connections."""
     meta = adapter._instances.get(instance_id)
@@ -99,7 +106,7 @@ async def _container_ip(container_name: str, network: str) -> str:
     return ip
 
 
-@app.delete("/destroy/{instance_id}")
+@app.delete("/destroy/{instance_id}", dependencies=[Depends(require_worker_api_key)])
 async def destroy(instance_id: str):
     try:
         await adapter.destroy(instance_id)
@@ -110,7 +117,7 @@ async def destroy(instance_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/detect-protocol")
+@app.get("/detect-protocol", dependencies=[Depends(require_worker_api_key)])
 async def detect_protocol(image: str):
     """Inspect image CMD/Entrypoint to determine if it speaks HTTP or raw TCP."""
     import json as _json

@@ -8,9 +8,18 @@
 
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 RECRUIT_DIR="${1:-/Users/danielpeng/Downloads/recruit-chals}"
 ORCHESTRATOR_URL="${ORCHESTRATOR_URL:-http://localhost:8080}"
-API_KEY="${API_KEY:-dev-api-key-change-in-prod}"
+
+API_KEY="${API_KEY:-}"
+if [ -z "$API_KEY" ] && [ -f "$ROOT_DIR/.env" ]; then
+  API_KEY="$(grep -E '^API_KEY=' "$ROOT_DIR/.env" | tail -1 | cut -d= -f2-)"
+fi
+if [ -z "$API_KEY" ]; then
+  echo "ERROR: API_KEY is required. Export API_KEY or define it in $ROOT_DIR/.env"
+  exit 1
+fi
 
 # Challenges that need a live instance (have a port + Docker image)
 INSTANCED_CHALLENGES=(
@@ -33,7 +42,7 @@ is_instanced() {
 echo "Importing challenges from $RECRUIT_DIR into CTFd..."
 echo ""
 
-SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$ROOT_DIR"
 
 python3 - "$RECRUIT_DIR" "$ORCHESTRATOR_URL" "$API_KEY" "$SCRIPT_DIR" <<'PYEOF'
 import json, os, glob, sys, subprocess, re

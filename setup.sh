@@ -4,10 +4,12 @@
 # Safe to re-run — already-installed tools are updated, not reinstalled.
 #
 # Usage:
-#   ./setup.sh              # Docker runtime only (local dev)
-#   ./setup.sh --kctf       # Docker + Kubernetes + kCTF
-#   ./setup.sh --kata-fc    # Docker + Kubernetes + kCTF + Kata + Firecracker
-#   ./setup.sh --all        # Everything
+#   ./setup.sh              # One-command setup (auto-detects host capabilities)
+#   ./setup.sh --external-ctfd                     # Auto-integrate with existing CTFd
+#   ./setup.sh --external-ctfd-container <name>    # Integrate a running CTFd container
+#   ./setup.sh --external-ctfd-path <path>         # Integrate a filesystem CTFd checkout
+#   ./setup.sh --external-ctfd-url <url>           # Existing CTFd base URL (default: http://localhost:8000)
+#   ./setup.sh --isolatex-url-for-ctfd <url>       # URL CTFd should use to reach IsolateX
 
 set -euo pipefail
 
@@ -19,20 +21,56 @@ warn()    { echo -e "${YELLOW}[IsolateX]${NC} $*"; }
 error()   { echo -e "${RED}[IsolateX]${NC} $*"; exit 1; }
 
 # ── Args ──────────────────────────────────────────────────────────────────────
-INSTALL_KCTF=false
-INSTALL_KATA_FC=false
+EXTERNAL_CTFD=false
+EXTERNAL_CTFD_PATH=""
+EXTERNAL_CTFD_CONTAINER=""
+EXTERNAL_CTFD_URL="${CTFD_URL:-http://localhost:8000}"
+ISOLATEX_URL_FOR_CTFD=""
 
-for arg in "$@"; do
-  case $arg in
-    --kctf)    INSTALL_KCTF=true ;;
-    --kata-fc) INSTALL_KCTF=true; INSTALL_KATA_FC=true ;;
-    --all)     INSTALL_KCTF=true; INSTALL_KATA_FC=true ;;
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --external-ctfd)
+      EXTERNAL_CTFD=true
+      shift
+      ;;
+    --external-ctfd-path)
+      EXTERNAL_CTFD=true
+      EXTERNAL_CTFD_PATH="${2:-}"
+      [ -n "$EXTERNAL_CTFD_PATH" ] || error "--external-ctfd-path requires a value"
+      shift 2
+      ;;
+    --external-ctfd-container)
+      EXTERNAL_CTFD=true
+      EXTERNAL_CTFD_CONTAINER="${2:-}"
+      [ -n "$EXTERNAL_CTFD_CONTAINER" ] || error "--external-ctfd-container requires a value"
+      shift 2
+      ;;
+    --external-ctfd-url)
+      EXTERNAL_CTFD=true
+      EXTERNAL_CTFD_URL="${2:-}"
+      [ -n "$EXTERNAL_CTFD_URL" ] || error "--external-ctfd-url requires a value"
+      shift 2
+      ;;
+    --isolatex-url-for-ctfd)
+      ISOLATEX_URL_FOR_CTFD="${2:-}"
+      [ -n "$ISOLATEX_URL_FOR_CTFD" ] || error "--isolatex-url-for-ctfd requires a value"
+      shift 2
+      ;;
+    *)
+      error "Unknown argument: $1"
+      ;;
   esac
 done
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 [ "$ARCH" = "x86_64" ] && ARCH_ALT="amd64" || ARCH_ALT="arm64"
+AUTO_INSTALL_KCTF=false
+AUTO_INSTALL_KATA_FC=false
+KCTF_READY=false
+KATA_FC_READY=false
+KCTF_REASON=""
+KATA_FC_REASON=""
 
 echo ""
 echo "  ██╗███████╗ ██████╗ ██╗      █████╗ ████████╗███████╗██╗  ██╗"
@@ -51,6 +89,99 @@ need_cmd() { command -v "$1" &>/dev/null || error "Required command '$1' not fou
 version_gte() {
   # Returns 0 if $1 >= $2 (both semver strings)
   printf '%s\n%s\n' "$2" "$1" | sort -V -C
+}
+
+get_env_value() {
+  local key="$1"
+  local value=""
+  if [ -f .env ]; then
+    value="$(grep -E "^${key}=" .env | tail -1 | cut -d= -f2-)"
+  fi
+  echo "$value"
+}
+
+detect_external_ctfd_container() {
+  # Best-effort: pick a running container name that contains "ctfd".
+  docker ps --format '{{.Names}}' | grep -E 'ctfd' | head -1 || true
+}
+
+detect_isolatex_url_for_container() {
+  local container="$1"
+  local gateway
+  gateway="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.Gateway}} {{end}}' "$container" 2>/dev/null | awk '{print $1}')"
+  if [ -n "$gateway" ]; then
+    echo "http://${gateway}:8080"
+    return
+  fi
+  echo "http://host.docker.internal:8080"
+}
+
+write_plugin_env_file() {
+  local target_file="$1"
+  local isolatex_url="$2"
+  local api_key="$3"
+  local kctf_enabled="$4"
+  local kctf_reason="$5"
+  local kata_enabled="$6"
+  local kata_reason="$7"
+  cat > "$target_file" <<EOF
+ISOLATEX_URL=${isolatex_url}
+ISOLATEX_API_KEY=${api_key}
+ISOLATEX_CAP_KCTF_ENABLED=${kctf_enabled}
+ISOLATEX_CAP_KCTF_REASON=${kctf_reason}
+ISOLATEX_CAP_KATA_FIRECRACKER_ENABLED=${kata_enabled}
+ISOLATEX_CAP_KATA_FIRECRACKER_REASON=${kata_reason}
+EOF
+  chmod 600 "$target_file" 2>/dev/null || true
+}
+
+sync_local_plugin_env_file() {
+  local api_key
+  local kctf_enabled="false"
+  local kata_enabled="false"
+
+  api_key="$(get_env_value API_KEY)"
+  [ -n "$api_key" ] || return 0
+
+  if $KCTF_READY; then
+    kctf_enabled="true"
+  fi
+  if $KATA_FC_READY; then
+    kata_enabled="true"
+  fi
+
+  write_plugin_env_file \
+    "./ctfd-plugin/.isolatex.env" \
+    "http://orchestrator:8080" \
+    "$api_key" \
+    "$kctf_enabled" \
+    "${KCTF_REASON}" \
+    "$kata_enabled" \
+    "${KATA_FC_REASON}"
+}
+
+plan_runtime_installs() {
+  if [ "$OS" != "Linux" ]; then
+    warn "Advanced runtimes require Linux host. Proceeding with Docker runtime only on ${OS}."
+    AUTO_INSTALL_KCTF=false
+    AUTO_INSTALL_KATA_FC=false
+    KCTF_REASON="kCTF is disabled because this host is not Linux. This cannot be enabled from the IsolateX page. Run IsolateX on a Linux host, then rerun ./setup.sh."
+    KATA_FC_REASON="kata-firecracker is disabled because this host is not Linux. This cannot be enabled from the IsolateX page. Run IsolateX on a Linux host with KVM enabled, then rerun ./setup.sh."
+    return
+  fi
+
+  AUTO_INSTALL_KCTF=true
+
+  if [ -e /dev/kvm ]; then
+    AUTO_INSTALL_KATA_FC=true
+    KATA_FC_REASON=""
+  else
+    warn "/dev/kvm not detected. kCTF will be installed; Kata-Firecracker will be skipped."
+    AUTO_INSTALL_KATA_FC=false
+    KATA_FC_REASON="kata-firecracker is disabled because /dev/kvm is unavailable. This cannot be enabled from the IsolateX page. Enable VT-x/AMD-V in BIOS and ensure KVM modules are loaded, then rerun ./setup.sh."
+  fi
+
+  KCTF_REASON=""
 }
 
 # ── 1. Docker ─────────────────────────────────────────────────────────────────
@@ -286,6 +417,14 @@ EOF
 setup_isolatex() {
   info "Setting up IsolateX..."
 
+  ensure_env_key() {
+    local key="$1"
+    if ! grep -Eq "^${key}=" .env; then
+      echo "${key}=$(openssl rand -hex 32)" >> .env
+      info "Added missing ${key} to .env"
+    fi
+  }
+
   # Generate secrets if .env doesn't exist
   if [ ! -f .env ]; then
     info "Generating .env with random secrets..."
@@ -300,6 +439,14 @@ EOF
     success ".env already exists — keeping existing secrets."
   fi
 
+  # Backfill any keys that older .env files might not include.
+  ensure_env_key "API_KEY"
+  ensure_env_key "FLAG_HMAC_SECRET"
+  ensure_env_key "SECRET_KEY"
+  ensure_env_key "CTFD_SECRET_KEY"
+  chmod 600 .env 2>/dev/null || true
+  sync_local_plugin_env_file
+
   # Pull/build images
   info "Building IsolateX Docker images..."
   docker compose pull --ignore-buildable 2>/dev/null || true
@@ -307,7 +454,13 @@ EOF
 
   # Start the stack
   info "Starting IsolateX stack..."
-  docker compose up -d
+  if $EXTERNAL_CTFD; then
+    # External CTFd mode: run IsolateX core services only.
+    docker compose up -d postgres redis orchestrator worker-docker
+  else
+    # Bundled mode: full stack including CTFd + gateway.
+    docker compose up -d
+  fi
 
   # Wait for orchestrator health
   info "Waiting for orchestrator to be ready..."
@@ -320,47 +473,178 @@ EOF
 
   success "IsolateX stack is running."
   echo ""
-  echo "  CTFd:            http://localhost:8000"
+  if $EXTERNAL_CTFD; then
+    echo "  External CTFd:   ${EXTERNAL_CTFD_URL}"
+  else
+    echo "  CTFd:            http://localhost:8000"
+  fi
   echo "  Orchestrator:    http://localhost:8080/docs"
-  echo "  Admin UI:        http://localhost:8000/isolatex/admin  (after CTFd setup)"
+  if $EXTERNAL_CTFD; then
+    echo "  Admin UI:        ${EXTERNAL_CTFD_URL%/}/isolatex/admin"
+  else
+    echo "  Admin UI:        http://localhost:8000/isolatex/admin  (after CTFd setup)"
+  fi
   echo ""
+}
+
+integrate_external_ctfd() {
+  local api_key
+  local isolatex_url
+  local plugin_env_file
+  local auto_container
+  local kctf_enabled="false"
+  local kata_enabled="false"
+
+  api_key="$(get_env_value API_KEY)"
+  [ -n "$api_key" ] || error "API_KEY missing from .env"
+  if $KCTF_READY; then
+    kctf_enabled="true"
+  fi
+  if $KATA_FC_READY; then
+    kata_enabled="true"
+  fi
+
+  if [ -n "$ISOLATEX_URL_FOR_CTFD" ]; then
+    isolatex_url="$ISOLATEX_URL_FOR_CTFD"
+  elif [ -n "$EXTERNAL_CTFD_CONTAINER" ]; then
+    isolatex_url="$(detect_isolatex_url_for_container "$EXTERNAL_CTFD_CONTAINER")"
+  else
+    isolatex_url="http://localhost:8080"
+  fi
+
+  info "Configuring IsolateX plugin connection for external CTFd..."
+  success "Using IsolateX URL for CTFd: ${isolatex_url}"
+
+  if [ -n "$EXTERNAL_CTFD_PATH" ]; then
+    local plugin_target="${EXTERNAL_CTFD_PATH%/}/CTFd/plugins/isolatex"
+    info "Installing plugin into filesystem CTFd path: ${plugin_target}"
+    mkdir -p "${EXTERNAL_CTFD_PATH%/}/CTFd/plugins"
+    rm -rf "$plugin_target"
+    cp -R ./ctfd-plugin "$plugin_target"
+    plugin_env_file="${plugin_target}/.isolatex.env"
+    write_plugin_env_file "$plugin_env_file" "$isolatex_url" "$api_key" "$kctf_enabled" "${KCTF_REASON}" "$kata_enabled" "${KATA_FC_REASON}"
+
+    if [ -x "${EXTERNAL_CTFD_PATH%/}/venv/bin/pip" ]; then
+      "${EXTERNAL_CTFD_PATH%/}/venv/bin/pip" install --quiet httpx==0.27.0 || warn "Could not install httpx in venv"
+    elif [ -x "${EXTERNAL_CTFD_PATH%/}/.venv/bin/pip" ]; then
+      "${EXTERNAL_CTFD_PATH%/}/.venv/bin/pip" install --quiet httpx==0.27.0 || warn "Could not install httpx in .venv"
+    else
+      warn "Could not find a Python virtualenv at ${EXTERNAL_CTFD_PATH}. Ensure httpx is installed in CTFd."
+    fi
+    success "Filesystem CTFd plugin installed and configured."
+  fi
+
+  if [ -z "$EXTERNAL_CTFD_CONTAINER" ]; then
+    auto_container="$(detect_external_ctfd_container)"
+    if [ -n "$auto_container" ]; then
+      EXTERNAL_CTFD_CONTAINER="$auto_container"
+      if [ -z "$ISOLATEX_URL_FOR_CTFD" ]; then
+        isolatex_url="$(detect_isolatex_url_for_container "$EXTERNAL_CTFD_CONTAINER")"
+        success "Auto-detected CTFd container '${EXTERNAL_CTFD_CONTAINER}'"
+        success "Auto-detected container-to-host IsolateX URL: ${isolatex_url}"
+      fi
+    fi
+  fi
+
+  if [ -n "$EXTERNAL_CTFD_CONTAINER" ]; then
+    info "Installing plugin into container: ${EXTERNAL_CTFD_CONTAINER}"
+    docker exec "$EXTERNAL_CTFD_CONTAINER" sh -lc "mkdir -p /opt/CTFd/CTFd/plugins/isolatex"
+    docker cp ./ctfd-plugin/. "${EXTERNAL_CTFD_CONTAINER}:/opt/CTFd/CTFd/plugins/isolatex/"
+    docker exec -i "$EXTERNAL_CTFD_CONTAINER" sh -lc "cat > /opt/CTFd/CTFd/plugins/isolatex/.isolatex.env" <<EOF
+ISOLATEX_URL=${isolatex_url}
+ISOLATEX_API_KEY=${api_key}
+ISOLATEX_CAP_KCTF_ENABLED=${kctf_enabled}
+ISOLATEX_CAP_KCTF_REASON=${KCTF_REASON}
+ISOLATEX_CAP_KATA_FIRECRACKER_ENABLED=${kata_enabled}
+ISOLATEX_CAP_KATA_FIRECRACKER_REASON=${KATA_FC_REASON}
+EOF
+    docker exec "$EXTERNAL_CTFD_CONTAINER" sh -lc "chmod 600 /opt/CTFd/CTFd/plugins/isolatex/.isolatex.env" >/dev/null 2>&1 || true
+    docker exec "$EXTERNAL_CTFD_CONTAINER" sh -lc "(python -m pip install --no-cache-dir httpx==0.27.0 || pip install --no-cache-dir httpx==0.27.0)" \
+      >/dev/null 2>&1 || warn "Could not auto-install httpx inside container; ensure it exists in CTFd."
+    docker restart "$EXTERNAL_CTFD_CONTAINER" >/dev/null 2>&1 || warn "Could not auto-restart ${EXTERNAL_CTFD_CONTAINER}; restart it manually."
+    success "Container CTFd plugin installed and configured."
+  fi
+
+  if [ -z "$EXTERNAL_CTFD_PATH" ] && [ -z "$EXTERNAL_CTFD_CONTAINER" ]; then
+    warn "Could not auto-detect an external CTFd path/container for plugin install."
+    echo "  Manual fallback:"
+    echo "    1) Copy ./ctfd-plugin to your CTFd plugins folder as 'isolatex'"
+    echo "    2) Create CTFd plugin file '.isolatex.env' with:"
+    echo "         ISOLATEX_URL=${isolatex_url}"
+    echo "         ISOLATEX_API_KEY=<copy API_KEY from IsolateX .env>"
+    echo "    3) Restart CTFd"
+  fi
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 install_or_update_docker
+plan_runtime_installs
 
-if $INSTALL_KCTF; then
-  install_or_update_kubectl
-  install_or_update_k3s
-  setup_kctf_namespace
+if $AUTO_INSTALL_KCTF; then
+  if install_or_update_kubectl && install_or_update_k3s && setup_kctf_namespace; then
+    KCTF_READY=true
+    KCTF_REASON=""
+  else
+    warn "kCTF installation did not fully complete. Continuing with Docker runtime."
+    KCTF_READY=false
+    KCTF_REASON="kCTF setup did not complete on this host. This cannot be enabled from the IsolateX page. Check setup logs, fix Kubernetes prerequisites, then rerun ./setup.sh."
+  fi
 fi
 
-if $INSTALL_KATA_FC; then
-  install_or_update_kata_firecracker
+if $AUTO_INSTALL_KATA_FC; then
+  if $KCTF_READY && install_or_update_kata_firecracker; then
+    KATA_FC_READY=true
+    KATA_FC_REASON=""
+  else
+    warn "Kata-Firecracker setup skipped or failed. Continuing without kata-firecracker runtime."
+    KATA_FC_READY=false
+    if [ -z "$KATA_FC_REASON" ]; then
+      KATA_FC_REASON="kata-firecracker setup did not complete on this host. This cannot be enabled from the IsolateX page. Verify KVM and Kata prerequisites, then rerun ./setup.sh."
+    fi
+  fi
+fi
+
+# Auto-switch to external mode when a non-IsolateX CTFd is already reachable.
+if ! $EXTERNAL_CTFD; then
+  local_ctfd_id="$(docker compose ps -q ctfd 2>/dev/null || true)"
+  if [ -z "$local_ctfd_id" ] && curl -fsS "${EXTERNAL_CTFD_URL%/}/login" >/dev/null 2>&1; then
+    EXTERNAL_CTFD=true
+    info "Detected existing CTFd at ${EXTERNAL_CTFD_URL}; enabling external integration mode."
+  fi
 fi
 
 setup_isolatex
+
+if $EXTERNAL_CTFD; then
+  integrate_external_ctfd
+fi
 
 echo ""
 success "Setup complete!"
 echo ""
 echo "  Next steps:"
-echo "  1. Go to http://localhost:8000 and complete CTFd setup"
-echo "  2. Go to Admin → Plugins → IsolateX to configure TTL and resource tiers"
-echo "  3. Register your challenges:"
+if $EXTERNAL_CTFD; then
+  echo "  1. Open your CTFd at ${EXTERNAL_CTFD_URL}"
+  echo "  2. Confirm IsolateX appears in the admin navbar"
+  echo "  3. Go to Admin → Plugins → IsolateX and configure challenge runtimes"
+else
+  echo "  1. Go to http://localhost:8000 and complete CTFd setup"
+  echo "  2. Go to Admin → Plugins → IsolateX to configure TTL and resource tiers"
+fi
+echo "  4. Register your challenges (existing CTFd challenge names are skipped, never overwritten):"
 echo "     curl -X POST http://localhost:8080/challenges \\"
 echo "       -H 'x-api-key: \$(grep API_KEY .env | cut -d= -f2)' \\"
 echo "       -H 'content-type: application/json' \\"
 echo "       -d '{\"id\":\"my-challenge\",\"name\":\"My Challenge\",\"runtime\":\"docker\",\"image\":\"my-image:latest\",\"port\":80}'"
 echo ""
-if $INSTALL_KCTF; then
+if $KCTF_READY; then
   echo "  Kubernetes is running. Worker env vars for kCTF runtime:"
   echo "    RUNTIME=kctf"
   echo "    KUBECONFIG=\$HOME/.kube/config"
   echo "    KCTF_NAMESPACE=kctf"
   echo ""
 fi
-if $INSTALL_KATA_FC; then
+if $KATA_FC_READY; then
   echo "  Kata + Firecracker RuntimeClass installed:"
   kubectl get runtimeclass 2>/dev/null || true
   echo ""

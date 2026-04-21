@@ -2,7 +2,6 @@ import asyncio
 from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 
 from orchestrator.db.session import init_db
@@ -40,13 +39,6 @@ app = FastAPI(
     version="1.0.0",
     description="Per-team challenge isolation platform for CTFd",
     lifespan=lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 app.include_router(instances.router)

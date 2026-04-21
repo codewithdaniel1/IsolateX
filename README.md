@@ -56,35 +56,50 @@ Set per-challenge in the admin panel (Plugins → IsolateX):
 ```bash
 git clone https://github.com/codewithdaniel1/IsolateX
 cd IsolateX
-./setup.sh
-cp -r ctfd-plugin/ <path-to-CTFd>/CTFd/plugins/isolatex/
+./setup.sh --external-ctfd
 ```
 
-Restart CTFd. Then:
-1. Run `./scripts/import-recruit-chals.sh` to import challenges, auto-register instanced ones with the orchestrator, and upload any downloadable files declared in `challenge.json`
+The setup script will:
+- start IsolateX core services (`postgres`, `redis`, `orchestrator`, `worker-docker`)
+- auto-detect a running external CTFd container when possible and install/configure the plugin
+- write plugin connection settings automatically (`ISOLATEX_URL`, `ISOLATEX_API_KEY`)
+
+If auto-detection is ambiguous, pin it explicitly:
+```bash
+./setup.sh --external-ctfd --external-ctfd-container my-ctfd
+# or
+./setup.sh --external-ctfd --external-ctfd-path /path/to/CTFd
+```
+
+Then:
+1. Run `./scripts/import-recruit-chals.sh` to import challenges, auto-register instanced ones with the orchestrator, and upload any downloadable files declared in `challenge.json` (existing CTFd challenge names are skipped and not overwritten)
 2. Go to **Admin → Plugins → IsolateX** — only registered (instanced) challenges appear
 3. Adjust runtime or tier per challenge if needed and click **Save**
 4. Done — players see the Launch button on registered challenges; all others are unaffected
 
 If your CTFd admin credentials are not the default `admin` / `admin`, set `CTFD_USER` and `CTFD_PASS` before running the import script so downloadable challenge files can be attached automatically. If the script cannot log in, it falls back to syncing files directly into the local Docker Compose CTFd instance.
 
+Run a live post-deploy security smoke test any time:
+```bash
+./scripts/security-smoke.sh
+```
+
 ### Starting from scratch
 
 ```bash
 git clone https://github.com/codewithdaniel1/IsolateX
 cd IsolateX
-
-# Docker only (local dev — works on macOS, Windows, Linux)
 ./setup.sh
-
-# Docker + Kubernetes + kCTF  (Linux only)
-./setup.sh --kctf
-
-# + Kata + Firecracker  (Linux + KVM required)
-./setup.sh --kata-fc
 ```
 
-The script detects what you already have installed and **updates** it rather than reinstalling. On first run it generates a `.env` file with random secrets.
+The script auto-detects your host and installs all supported components:
+- macOS/Windows: Docker runtime stack
+- Linux: Docker + kCTF
+- Linux with KVM (`/dev/kvm`): Docker + kCTF + kata-firecracker
+
+If a runtime appears disabled in the IsolateX admin page, that toggle cannot be enabled from the page itself. Fix host prerequisites (Linux/KVM) and rerun `./setup.sh`.
+
+It is safe to re-run; existing tools are updated instead of reinstalled. On first run it generates a `.env` file with random secrets.
 
 After the script finishes:
 1. Go to **http://localhost:8000** and complete the CTFd setup wizard

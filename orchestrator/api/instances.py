@@ -240,10 +240,11 @@ async def _wait_for_ready(worker: Worker, instance_id: str, timeout: int = 30, i
     import time
     url = f"http://{worker.address}:{worker.agent_port}/ready/{instance_id}"
     deadline = time.monotonic() + timeout
+    headers = {"x-api-key": settings.api_key}
     while time.monotonic() < deadline:
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
-                resp = await client.get(url)
+                resp = await client.get(url, headers=headers)
                 if resp.status_code == 200:
                     return
         except Exception:
@@ -268,7 +269,7 @@ async def _launch_on_worker(inst: Instance, challenge: Challenge, worker: Worker
     url = f"http://{worker.address}:{worker.agent_port}/launch"
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, json=payload)
+            resp = await client.post(url, json=payload, headers={"x-api-key": settings.api_key})
             resp.raise_for_status()
             data = resp.json()
 
@@ -312,6 +313,6 @@ async def _destroy_on_worker(inst: Instance):
     url = f"http://{worker.address}:{worker.agent_port}/destroy/{inst.id}"
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            await client.delete(url)
+            await client.delete(url, headers={"x-api-key": settings.api_key})
     except Exception as e:
         log.error("destroy worker call failed", instance_id=str(inst.id), error=str(e))

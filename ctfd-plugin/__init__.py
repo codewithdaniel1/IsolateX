@@ -18,9 +18,9 @@ Config (environment variables or CTFd admin → Plugins → IsolateX):
 """
 from flask import Blueprint, jsonify, send_file, render_template, request
 from CTFd.utils.user import get_current_team, get_current_user
-from CTFd.utils.decorators import admins_only
+from CTFd.utils.decorators import admins_only, authed_only
 from CTFd.utils import get_config, set_config
-from CTFd.plugins import register_plugin_assets_directory, bypass_csrf_protection, register_admin_plugin_menu_bar
+from CTFd.plugins import register_plugin_assets_directory, register_admin_plugin_menu_bar
 from CTFd.models import Challenges
 import httpx
 import os
@@ -31,18 +31,129 @@ blueprint = Blueprint("isolatex", __name__, template_folder="templates",
 
 # Path to assets directory
 ASSETS_DIR = Path(__file__).parent / "assets"
+PLUGIN_ENV_PATH = Path(__file__).parent / ".isolatex.env"
 
-ORCHESTRATOR_URL = os.environ.get("ISOLATEX_URL", "http://orchestrator:8080")
-API_KEY = os.environ.get("ISOLATEX_API_KEY", "")
+
+def _plugin_file_settings() -> dict:
+    settings = {}
+    try:
+        if not PLUGIN_ENV_PATH.exists():
+            return settings
+        for raw in PLUGIN_ENV_PATH.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            settings[key.strip()] = value.strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return settings
+
+
+def _setting(config_key: str, env_key: str, default: str = "") -> str:
+    from_config = get_config(config_key)
+    if from_config:
+        return str(from_config).strip()
+    from_file = _plugin_file_settings().get(env_key)
+    if from_file:
+        return from_file
+    return os.environ.get(env_key, default)
+
+
+def _bool_setting(config_key: str, env_key: str):
+    raw = _setting(config_key, env_key, "").strip().lower()
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return None
+
+
+def _orchestrator_url() -> str:
+    return _setting("isolatex_url", "ISOLATEX_URL", "http://orchestrator:8080").rstrip("/")
+
+
+def _api_key() -> str:
+    return _setting("isolatex_api_key", "ISOLATEX_API_KEY", "")
+
+
+def _orch(path: str) -> str:
+    return f"{_orchestrator_url()}{path}"
 
 
 def _headers():
-    return {"x-api-key": API_KEY, "content-type": "application/json"}
+    return {"x-api-key": _api_key(), "content-type": "application/json"}
+
+
+def _sanitize_instance_payload(payload: dict) -> dict:
+    """Never forward sensitive instance fields to the browser."""
+    if not isinstance(payload, dict):
+        return {}
+    redacted = dict(payload)
+    redacted.pop("flag", None)
+    return redacted
+
+
+def _runtime_capabilities() -> dict:
+    """
+    Runtime availability for admin UI.
+    Priority: explicit plugin config/file values -> infer from registered workers.
+    """
+    caps = {
+        "docker": {"enabled": True, "reason": ""},
+        "kctf": {
+            "enabled": _bool_setting("isolatex_cap_kctf_enabled", "ISOLATEX_CAP_KCTF_ENABLED"),
+            "reason": _setting("isolatex_cap_kctf_reason", "ISOLATEX_CAP_KCTF_REASON", ""),
+        },
+        "kata-firecracker": {
+            "enabled": _bool_setting(
+                "isolatex_cap_kata_firecracker_enabled",
+                "ISOLATEX_CAP_KATA_FIRECRACKER_ENABLED",
+            ),
+            "reason": _setting(
+                "isolatex_cap_kata_firecracker_reason",
+                "ISOLATEX_CAP_KATA_FIRECRACKER_REASON",
+                "",
+            ),
+        },
+    }
+
+    # Fallback inference from worker runtimes when explicit capability is unset.
+    try:
+        workers = httpx.get(_orch("/workers"), headers=_headers(), timeout=5.0).json()
+        runtimes = {w.get("runtime") for w in workers if w.get("active", True)}
+    except Exception:
+        runtimes = set()
+
+    if caps["kctf"]["enabled"] is None:
+        caps["kctf"]["enabled"] = "kctf" in runtimes
+        if not caps["kctf"]["enabled"] and not caps["kctf"]["reason"]:
+            caps["kctf"]["reason"] = (
+                "kCTF is not available: no kctf worker is registered. "
+                "This cannot be enabled from the IsolateX page. "
+                "Use a Linux host and rerun ./setup.sh."
+            )
+
+    if caps["kata-firecracker"]["enabled"] is None:
+        caps["kata-firecracker"]["enabled"] = "kata-firecracker" in runtimes
+        if not caps["kata-firecracker"]["enabled"] and not caps["kata-firecracker"]["reason"]:
+            caps["kata-firecracker"]["reason"] = (
+                "kata-firecracker is not available: no kata-firecracker worker is registered. "
+                "This cannot be enabled from the IsolateX page. "
+                "Use a Linux host with KVM enabled and rerun ./setup.sh."
+            )
+
+    # Normalize reasons when enabled.
+    for runtime in ("kctf", "kata-firecracker"):
+        if caps[runtime]["enabled"]:
+            caps[runtime]["reason"] = ""
+
+    return caps
 
 
 def _team_id() -> str:
     """Get unique identifier for current user/team.
-    Priority: team (if in team mode) > user (individual) > admin (if not logged in)
+    Priority: team (if in team mode) > user (individual mode).
     """
     team = get_current_team()
     if team:
@@ -52,14 +163,13 @@ def _team_id() -> str:
     if user:
         return f"user-{user.id}"
 
-    # Fallback for unauthenticated access (admin testing)
-    return "admin-default"
+    raise PermissionError("authentication required")
 
 
 def _get_active_instance(challenge_id: str):
     tid = _team_id()
     return httpx.get(
-        f"{ORCHESTRATOR_URL}/instances/team/{tid}/{challenge_id}",
+        _orch(f"/instances/team/{tid}/{challenge_id}"),
         headers=_headers(),
         timeout=10.0,
     )
@@ -70,11 +180,12 @@ def _get_active_instance(challenge_id: str):
 # ---------------------------------------------------------------------------
 
 @blueprint.route("/instance/<challenge_id>", methods=["GET"])
+@authed_only
 def get_instance(challenge_id: str):
     try:
         # Check if this challenge is registered for instancing
         chal_resp = httpx.get(
-            f"{ORCHESTRATOR_URL}/challenges/{challenge_id}",
+            _orch(f"/challenges/{challenge_id}"),
             headers=_headers(),
             timeout=5.0,
         )
@@ -86,7 +197,9 @@ def get_instance(challenge_id: str):
         if resp.status_code == 404:
             return jsonify({"status": "none"}), 200
         resp.raise_for_status()
-        return jsonify(resp.json())
+        return jsonify(_sanitize_instance_payload(resp.json()))
+    except PermissionError as e:
+        return jsonify({"error": str(e)}), 401
     except httpx.HTTPStatusError as e:
         return jsonify({"error": e.response.text}), e.response.status_code
     except Exception as e:
@@ -94,12 +207,12 @@ def get_instance(challenge_id: str):
 
 
 @blueprint.route("/instance/<challenge_id>", methods=["POST"])
-@bypass_csrf_protection
+@authed_only
 def launch_instance(challenge_id: str):
     tid = _team_id()
     try:
         resp = httpx.post(
-            f"{ORCHESTRATOR_URL}/instances",
+            _orch("/instances"),
             json={"team_id": tid, "challenge_id": challenge_id},
             headers=_headers(),
             timeout=30.0,
@@ -107,7 +220,9 @@ def launch_instance(challenge_id: str):
         if resp.status_code == 409:
             return get_instance(challenge_id)
         resp.raise_for_status()
-        return jsonify(resp.json()), 201
+        return jsonify(_sanitize_instance_payload(resp.json())), 201
+    except PermissionError as e:
+        return jsonify({"error": str(e)}), 401
     except httpx.HTTPStatusError as e:
         return jsonify({"error": e.response.text}), e.response.status_code
     except Exception as e:
@@ -115,7 +230,7 @@ def launch_instance(challenge_id: str):
 
 
 @blueprint.route("/instance/<challenge_id>", methods=["DELETE"])
-@bypass_csrf_protection
+@authed_only
 def stop_instance(challenge_id: str):
     try:
         inst_resp = _get_active_instance(challenge_id)
@@ -124,12 +239,14 @@ def stop_instance(challenge_id: str):
         inst_resp.raise_for_status()
         instance_id = inst_resp.json()["id"]
         resp = httpx.delete(
-            f"{ORCHESTRATOR_URL}/instances/{instance_id}",
+            _orch(f"/instances/{instance_id}"),
             headers=_headers(),
             timeout=15.0,
         )
         resp.raise_for_status()
         return jsonify({"status": "stopped"}), 200
+    except PermissionError as e:
+        return jsonify({"error": str(e)}), 401
     except httpx.HTTPStatusError as e:
         return jsonify({"error": e.response.text}), e.response.status_code
     except Exception as e:
@@ -137,7 +254,7 @@ def stop_instance(challenge_id: str):
 
 
 @blueprint.route("/instance/<challenge_id>/restart", methods=["POST"])
-@bypass_csrf_protection
+@authed_only
 def restart_instance(challenge_id: str):
     """Stop and relaunch. TTL resets to the full challenge default."""
     try:
@@ -147,12 +264,14 @@ def restart_instance(challenge_id: str):
         inst_resp.raise_for_status()
         instance_id = inst_resp.json()["id"]
         resp = httpx.post(
-            f"{ORCHESTRATOR_URL}/instances/{instance_id}/restart",
+            _orch(f"/instances/{instance_id}/restart"),
             headers=_headers(),
             timeout=30.0,
         )
         resp.raise_for_status()
-        return jsonify(resp.json()), 200
+        return jsonify(_sanitize_instance_payload(resp.json())), 200
+    except PermissionError as e:
+        return jsonify({"error": str(e)}), 401
     except httpx.HTTPStatusError as e:
         return jsonify({"error": e.response.text}), e.response.status_code
     except Exception as e:
@@ -160,7 +279,7 @@ def restart_instance(challenge_id: str):
 
 
 @blueprint.route("/instance/<challenge_id>/renew", methods=["POST"])
-@bypass_csrf_protection
+@authed_only
 def renew_instance(challenge_id: str):
     """Extend the TTL. Capped at 2 hours from the current time."""
     try:
@@ -170,12 +289,14 @@ def renew_instance(challenge_id: str):
         inst_resp.raise_for_status()
         instance_id = inst_resp.json()["id"]
         resp = httpx.post(
-            f"{ORCHESTRATOR_URL}/instances/{instance_id}/renew",
+            _orch(f"/instances/{instance_id}/renew"),
             headers=_headers(),
             timeout=10.0,
         )
         resp.raise_for_status()
         return jsonify(resp.json()), 200
+    except PermissionError as e:
+        return jsonify({"error": str(e)}), 401
     except httpx.HTTPStatusError as e:
         return jsonify({"error": e.response.text}), e.response.status_code
     except Exception as e:
@@ -197,32 +318,46 @@ def admin_page():
 def admin_get_config():
     # Fetch TTL from orchestrator (single source of truth)
     try:
-        resp = httpx.get(f"{ORCHESTRATOR_URL}/settings", headers=_headers(), timeout=5.0)
+        resp = httpx.get(_orch("/settings"), headers=_headers(), timeout=5.0)
         resp.raise_for_status()
         default_ttl = resp.json().get("default_ttl_seconds", 1800)
     except Exception:
         default_ttl = int(get_config("isolatex_default_ttl_seconds") or 1800)
 
     return jsonify({
+        "isolatex_url": _orchestrator_url(),
+        "isolatex_api_key_set": bool(_api_key()),
         "default_ttl_seconds": default_ttl,
         "default_cpu_count":   float(get_config("isolatex_default_cpu_count") or 1),
         "default_memory_mb":   int(get_config("isolatex_default_memory_mb") or 512),
     })
 
 
+@blueprint.route("/admin/runtime-capabilities", methods=["GET"])
+@admins_only
+def admin_runtime_capabilities():
+    return jsonify(_runtime_capabilities())
+
+
 @blueprint.route("/admin/config", methods=["POST"])
 @admins_only
-@bypass_csrf_protection
 def admin_save_config():
     data = request.get_json(force=True)
     default_ttl = data.get("default_ttl_seconds", 1800)
     cpu = data.get("default_cpu_count", 1)
     mem = data.get("default_memory_mb", 512)
+    isolatex_url = (data.get("isolatex_url") or "").strip()
+    isolatex_api_key = (data.get("isolatex_api_key") or "").strip()
+
+    if isolatex_url:
+        set_config("isolatex_url", isolatex_url.rstrip("/"))
+    if isolatex_api_key:
+        set_config("isolatex_api_key", isolatex_api_key)
 
     # Push TTL to orchestrator so it takes effect for new instances immediately
     try:
         httpx.patch(
-            f"{ORCHESTRATOR_URL}/settings",
+            _orch("/settings"),
             json={"default_ttl_seconds": default_ttl},
             headers=_headers(),
             timeout=5.0,
@@ -242,7 +377,7 @@ def admin_save_config():
 def admin_list_ctfd_challenges():
     """Return only challenges registered with IsolateX, enriched with CTFd metadata."""
     try:
-        ix_resp = httpx.get(f"{ORCHESTRATOR_URL}/challenges", headers=_headers(), timeout=10.0)
+        ix_resp = httpx.get(_orch("/challenges"), headers=_headers(), timeout=10.0)
         ix_resp.raise_for_status()
         ix_challenges = ix_resp.json()
     except Exception as e:
@@ -301,7 +436,7 @@ def admin_list_ctfd_challenges():
 @admins_only
 def admin_list_challenges():
     try:
-        resp = httpx.get(f"{ORCHESTRATOR_URL}/challenges", headers=_headers(), timeout=10.0)
+        resp = httpx.get(_orch("/challenges"), headers=_headers(), timeout=10.0)
         resp.raise_for_status()
         return jsonify(resp.json())
     except Exception as e:
@@ -312,7 +447,7 @@ def _detect_protocol(image: str) -> str:
     """Ask the orchestrator to detect protocol from the Docker image."""
     try:
         resp = httpx.get(
-            f"{ORCHESTRATOR_URL}/challenges/detect-protocol",
+            _orch("/challenges/detect-protocol"),
             params={"image": image},
             headers=_headers(),
             timeout=10.0,
@@ -326,16 +461,20 @@ def _detect_protocol(image: str) -> str:
 
 @blueprint.route("/admin/challenges/<challenge_id>", methods=["POST"])
 @admins_only
-@bypass_csrf_protection
 def admin_register_challenge(challenge_id: str):
     """Register (or re-register) a challenge with the orchestrator."""
     data = request.get_json(force=True)
+    runtime = (data.get("runtime") or "docker").strip()
+    caps = _runtime_capabilities()
+    if runtime in caps and not caps[runtime]["enabled"]:
+        return jsonify({"error": caps[runtime]["reason"] or f"{runtime} is disabled on this host"}), 400
+
     # Auto-detect protocol from image if not explicitly set
     if not data.get("protocol") and data.get("image"):
         data["protocol"] = _detect_protocol(data["image"])
     try:
         resp = httpx.post(
-            f"{ORCHESTRATOR_URL}/challenges",
+            _orch("/challenges"),
             json=data,
             headers=_headers(),
             timeout=10.0,
@@ -343,7 +482,7 @@ def admin_register_challenge(challenge_id: str):
         if resp.status_code == 409:
             # Already registered — update instead
             upd = httpx.patch(
-                f"{ORCHESTRATOR_URL}/challenges/{challenge_id}",
+                _orch(f"/challenges/{challenge_id}"),
                 json=data,
                 headers=_headers(),
                 timeout=10.0,
@@ -360,12 +499,11 @@ def admin_register_challenge(challenge_id: str):
 
 @blueprint.route("/admin/challenges/<challenge_id>/disable", methods=["POST"])
 @admins_only
-@bypass_csrf_protection
 def admin_disable_challenge(challenge_id: str):
     """Remove a challenge from IsolateX (stops new instances; existing ones finish naturally)."""
     try:
         resp = httpx.delete(
-            f"{ORCHESTRATOR_URL}/challenges/{challenge_id}",
+            _orch(f"/challenges/{challenge_id}"),
             headers=_headers(),
             timeout=10.0,
         )
@@ -381,12 +519,17 @@ def admin_disable_challenge(challenge_id: str):
 
 @blueprint.route("/admin/challenges/<challenge_id>", methods=["PATCH"])
 @admins_only
-@bypass_csrf_protection
 def admin_update_challenge(challenge_id: str):
     data = request.get_json(force=True)
+    runtime = (data.get("runtime") or "").strip()
+    if runtime:
+        caps = _runtime_capabilities()
+        if runtime in caps and not caps[runtime]["enabled"]:
+            return jsonify({"error": caps[runtime]["reason"] or f"{runtime} is disabled on this host"}), 400
+
     try:
         resp = httpx.patch(
-            f"{ORCHESTRATOR_URL}/challenges/{challenge_id}",
+            _orch(f"/challenges/{challenge_id}"),
             json=data,
             headers=_headers(),
             timeout=10.0,

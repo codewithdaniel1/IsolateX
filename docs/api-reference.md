@@ -75,7 +75,6 @@ Returns:
   "runtime": "docker",
   "status": "running",
   "endpoint": "http://localhost:34512",
-  "flag": "flag{...}",
   "expires_at": "2026-04-17T19:30:00Z",
   "started_at": "2026-04-17T19:00:00Z",
   "created_at": "2026-04-17T19:00:00Z"

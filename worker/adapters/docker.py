@@ -131,5 +131,6 @@ async def _run(*args, capture: bool = False, check: bool = True):
     )
     stdout, stderr = await proc.communicate()
     if check and proc.returncode != 0:
-        raise RuntimeError(f"command failed ({proc.returncode}): {' '.join(args)}\n{stderr}")
+        err = stderr.decode(errors="ignore").strip() if stderr else ""
+        raise RuntimeError(f"command failed ({proc.returncode})" + (f": {err}" if err else ""))
     return stdout

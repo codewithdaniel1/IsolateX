@@ -17,7 +17,6 @@ class InstanceResponse(BaseModel):
     runtime: RuntimeType
     status: InstanceStatus
     endpoint: Optional[str] = None
-    flag: Optional[str] = None
     expires_at: datetime
     started_at: Optional[datetime] = None
     created_at: datetime

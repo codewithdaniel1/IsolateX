@@ -15,12 +15,13 @@ from orchestrator.db.session import get_db
 from orchestrator.db.models import Instance, InstanceStatus, Worker
 from orchestrator.core.router import instance_subdomain
 from orchestrator.config import settings
+from orchestrator.api.deps import require_api_key
 
 router = APIRouter(prefix="/traefik", tags=["gateway"])
 log = structlog.get_logger()
 
 
-@router.get("/config")
+@router.get("/config", dependencies=[Depends(require_api_key)])
 async def traefik_config(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Instance, Worker)

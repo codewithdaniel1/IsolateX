@@ -9,26 +9,32 @@ If you already have CTFd running with challenges, this is all you need:
 ```bash
 git clone https://github.com/codewithdaniel1/IsolateX
 cd IsolateX
-./setup.sh                          # installs Docker stack + orchestrator
-cp -r ctfd-plugin/ <CTFd>/CTFd/plugins/isolatex/
-pip install httpx                   # inside your CTFd virtualenv/container
+./setup.sh --external-ctfd
 ```
 
-Set two environment variables in your CTFd environment:
-```
-ISOLATEX_URL=http://orchestrator:8080
-ISOLATEX_API_KEY=<value from .env>
+`setup.sh --external-ctfd` starts only the IsolateX core services and then attempts to auto-install/configure the plugin in your existing CTFd.
+
+Optional explicit targeting (recommended if multiple CTFd instances are running):
+```bash
+./setup.sh --external-ctfd --external-ctfd-container <ctfd-container-name>
+# or
+./setup.sh --external-ctfd --external-ctfd-path <path-to-CTFd>
 ```
 
-Restart CTFd. You'll see **IsolateX** in the admin navbar under Plugins.
+After setup, restart CTFd only if your environment requires it. You should see **IsolateX** in the admin navbar under Plugins.
 
 **Enabling instancing on your challenges:**
-1. Run `scripts/import-recruit-chals.sh` to import challenges, register instanced ones with the orchestrator, and upload any downloadable files listed in `challenge.json`
+1. Run `scripts/import-recruit-chals.sh` to import challenges, register instanced ones with the orchestrator, and upload any downloadable files listed in `challenge.json` (existing CTFd challenge names are skipped and not overwritten)
 2. Go to **Admin → Plugins → IsolateX** — only challenges registered with the orchestrator appear here
 3. Adjust the runtime tier per challenge if needed and click **Save**
 4. Players immediately see the Launch/Stop/Renew panel on registered challenges; all other challenges are completely unaffected
 
 If your CTFd admin login is not `admin` / `admin`, export `CTFD_USER` and `CTFD_PASS` first so the file-upload step can log in to CTFd. When that is unavailable, the script falls back to syncing files directly into the local Docker Compose CTFd instance.
+
+After setup/import, run a live security smoke test:
+```bash
+./scripts/security-smoke.sh
+```
 
 ---
 
@@ -39,26 +45,19 @@ The `setup.sh` script installs and configures everything. Safe to re-run — exi
 ```bash
 git clone https://github.com/codewithdaniel1/IsolateX
 cd IsolateX
-
-# Docker only — works on macOS, Windows (WSL2), and Linux
 ./setup.sh
-
-# Docker + Kubernetes + kCTF  (Linux only)
-./setup.sh --kctf
-
-# + Kata + Firecracker  (Linux + KVM required)
-./setup.sh --kata-fc
 ```
 
-**What each flag installs:**
+`./setup.sh` auto-detects host capabilities and installs all supported layers:
 
-| Flag | Tools installed | Runtimes unlocked |
+| Host capability | Tools installed | Runtimes unlocked |
 |---|---|---|
-| *(none)* | Docker, Docker Compose | `docker` |
-| `--kctf` | + kubectl, k3s, kCTF namespace + NetworkPolicy | `docker`, `kctf` |
-| `--kata-fc` | + Kata Containers, Firecracker, `kata-firecracker` RuntimeClass | + `kata-firecracker` |
+| Any host | Docker, Docker Compose | `docker` |
+| Linux host | + kubectl, k3s, kCTF namespace + NetworkPolicy | `docker`, `kctf` |
+| Linux + KVM (`/dev/kvm`) | + Kata Containers, Firecracker, `kata-firecracker` RuntimeClass | + `kata-firecracker` |
 
 > **macOS / Windows:** Only `docker` runtime works locally. Kubernetes-based runtimes (`kctf`, `kata-firecracker`) require a **Linux host** with **KVM hardware virtualization** enabled (VT-x for Intel, AMD-V for AMD — enable in BIOS). For production, use a Linux server or cloud VM (AWS, GCP, DigitalOcean, Hetzner).
+> If a runtime is disabled in the IsolateX admin page, that toggle cannot be enabled from the page itself. Fix host prerequisites and rerun `./setup.sh`.
 
 After the script finishes:
 1. Go to **http://localhost:8000** and complete the CTFd setup wizard
@@ -77,6 +76,15 @@ Everything runs in Docker Compose: orchestrator, a Docker worker, CTFd, Postgres
 ```bash
 git clone https://github.com/osiris/isolatex
 cd isolatex
+
+# Create secrets for compose (or run ./setup.sh once to auto-generate .env)
+cat > .env <<EOF
+API_KEY=$(openssl rand -hex 32)
+FLAG_HMAC_SECRET=$(openssl rand -hex 32)
+SECRET_KEY=$(openssl rand -hex 32)
+CTFD_SECRET_KEY=$(openssl rand -hex 32)
+EOF
+
 docker compose up -d
 ```
 
@@ -193,7 +201,7 @@ The admin UI is the easiest way to enable challenges. For scripted or CI/CD work
 
 ```bash
 #!/bin/bash
-API_KEY="dev-api-key-change-in-prod"
+API_KEY="$(grep '^API_KEY=' .env | cut -d= -f2-)"
 ORCH="http://localhost:8080"
 
 register() {
@@ -277,12 +285,11 @@ uvicorn main:app --host 0.0.0.0 --port 9090
 ```bash
 cp -r ctfd-plugin/ <CTFd>/CTFd/plugins/isolatex/
 pip install httpx
-```
 
-Set in your CTFd environment:
-```
+cat > <CTFd>/CTFd/plugins/isolatex/.isolatex.env <<EOF
 ISOLATEX_URL=http://orchestrator:8080
 ISOLATEX_API_KEY=<API_KEY>
+EOF
 ```
 
 Restart CTFd. You will see **[IsolateX] plugin loaded** in the CTFd logs.
