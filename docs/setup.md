@@ -29,6 +29,11 @@ Path expectations:
 Bundled mode details:
 - The CTFd image built from `ctfd/Dockerfile` includes the IsolateX plugin by default.
 - In local development, `docker-compose.yml` also bind-mounts `./ctfd-plugin` into CTFd so plugin edits apply immediately.
+- The bundled CTFd build tries `ctfd/ctfd:latest` first and automatically falls back to older tags if latest fails to build.
+- CI checks this fallback path in `.github/workflows/ctfd-build-fallback.yml`.
+- Optional overrides:
+  `CTFD_BASE_IMAGE=ctfd/ctfd:3.8.2 ./setup.sh`
+  `CTFD_FALLBACK_IMAGES=ctfd/ctfd:3.8.2,ctfd/ctfd:3.8.1 ./setup.sh`
 
 After setup, restart CTFd only if your environment requires it. You should see **IsolateX** in the admin navbar under Plugins.
 

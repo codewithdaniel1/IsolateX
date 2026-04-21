@@ -1,0 +1,25 @@
+name: CTFd Build Fallback
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  ctfd-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate compose file
+        run: docker compose config -q
+
+      - name: Build bundled CTFd (default latest path)
+        run: bash ./scripts/build-ctfd-with-fallback.sh
+
+      - name: Simulate latest failure and verify fallback
+        run: |
+          CTFD_BASE_IMAGE=ctfd/ctfd:tag-does-not-exist-for-fallback-test \
+          CTFD_FALLBACK_IMAGES=ctfd/ctfd:latest \
+          bash ./scripts/build-ctfd-with-fallback.sh

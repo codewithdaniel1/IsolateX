@@ -106,6 +106,7 @@ class SecurityRegressionTests(unittest.TestCase):
         for path in (
             "scripts/import-challenges.py",
             "scripts/import-challenges.sh",
+            "scripts/build-ctfd-with-fallback.sh",
             "scripts/upload-challenge-files.py",
             "docs/setup.md",
         ):

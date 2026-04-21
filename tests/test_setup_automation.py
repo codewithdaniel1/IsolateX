@@ -78,9 +78,18 @@ class SetupAutomationTests(unittest.TestCase):
     def test_bundled_ctfd_image_bakes_isolatex_plugin(self):
         dockerfile = read("ctfd/Dockerfile")
         compose = read("docker-compose.yml")
+        setup = read("setup.sh")
+        ci = read(".github/workflows/ctfd-build-fallback.yml")
+        fallback_builder = read("scripts/build-ctfd-with-fallback.sh")
+        self.assertIn("ARG CTFD_BASE_IMAGE=ctfd/ctfd:latest", dockerfile)
+        self.assertIn("FROM ${CTFD_BASE_IMAGE}", dockerfile)
         self.assertIn("COPY ctfd-plugin /opt/CTFd/CTFd/plugins/isolatex", dockerfile)
         self.assertIn("context: .", compose)
         self.assertIn("dockerfile: ctfd/Dockerfile", compose)
+        self.assertIn("CTFD_BASE_IMAGE: ${CTFD_BASE_IMAGE:-ctfd/ctfd:latest}", compose)
+        self.assertIn("scripts/build-ctfd-with-fallback.sh", setup)
+        self.assertIn("CTFD_FALLBACK_IMAGES", fallback_builder)
+        self.assertIn("Simulate latest failure and verify fallback", ci)
 
 
 if __name__ == "__main__":

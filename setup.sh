@@ -450,7 +450,13 @@ EOF
   # Pull/build images
   info "Building IsolateX Docker images..."
   docker compose pull --ignore-buildable 2>/dev/null || true
-  docker compose build
+  docker compose build orchestrator worker-docker
+  if ! $EXTERNAL_CTFD; then
+    # Bundled mode: try latest CTFd first, then fallback images if latest build fails.
+    if ! bash ./scripts/build-ctfd-with-fallback.sh; then
+      error "Bundled CTFd build failed for latest and fallback image candidates."
+    fi
+  fi
 
   # Start the stack
   info "Starting IsolateX stack..."

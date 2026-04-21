@@ -1,4 +1,5 @@
-FROM ctfd/ctfd:latest
+ARG CTFD_BASE_IMAGE=ctfd/ctfd:latest
+FROM ${CTFD_BASE_IMAGE}
 
 RUN pip install --no-cache-dir httpx==0.27.0
 
