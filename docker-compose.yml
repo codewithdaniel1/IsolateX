@@ -23,6 +23,8 @@ volumes:
   postgres_data:
   redis_data:
   traefik_acme:
+  ctfd_db_data:
+  ctfd_uploads:
 
 services:
   # ── Postgres ────────────────────────────────────────────────────────────────
@@ -137,6 +139,7 @@ services:
       - "8000:8000"
     volumes:
       - ./ctfd-plugin:/opt/CTFd/CTFd/plugins/isolatex
+      - ctfd_uploads:/var/uploads
 
   ctfd-db:
     image: mariadb:10.11
@@ -146,6 +149,8 @@ services:
       MYSQL_DATABASE: ctfd
       MYSQL_USER: ctfd
       MYSQL_PASSWORD: ctfd
+    volumes:
+      - ctfd_db_data:/var/lib/mysql
     networks:
       - isolatex_internal
 
