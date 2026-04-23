@@ -49,20 +49,31 @@ class KCTFAdapter(RuntimeAdapter):
     async def launch(self, req: LaunchRequest) -> LaunchResult:
         if req.instance_id in self._instances:
             return LaunchResult(
-                port=self._instances[req.instance_id]["host_port"],
+                backend_host=self._instances[req.instance_id]["backend_host"],
+                backend_port=self._instances[req.instance_id]["backend_port"],
                 metadata=self._instances[req.instance_id],
             )
 
         name = f"isolatex-{req.instance_id[:16]}"
-        host_port = _allocate_port(req.instance_id)
 
-        await asyncio.to_thread(self._create_kctf_pod, req, name, host_port)
-        await asyncio.to_thread(self._create_service, req, name, host_port)
+        await asyncio.to_thread(self._create_kctf_pod, req, name)
+        await asyncio.to_thread(self._create_service, req, name)
 
-        metadata = {"host_port": host_port, "pod_name": name}
+        backend_host = f"{name}.{KCTF_NAMESPACE}.svc.cluster.local"
+        metadata = {
+            "pod_name": name,
+            "service_name": name,
+            "backend_host": backend_host,
+            "backend_port": req.port,
+        }
         self._instances[req.instance_id] = metadata
-        log.info("kctf instance launched", instance_id=req.instance_id, pod=name)
-        return LaunchResult(port=host_port, metadata=metadata)
+        log.info(
+            "kctf instance launched",
+            instance_id=req.instance_id,
+            pod=name,
+            backend=f"{backend_host}:{req.port}",
+        )
+        return LaunchResult(backend_host=backend_host, backend_port=req.port, metadata=metadata)
 
     async def destroy(self, instance_id: str) -> None:
         meta = self._instances.pop(instance_id, None)
@@ -75,7 +86,7 @@ class KCTFAdapter(RuntimeAdapter):
     # Kubernetes operations (synchronous — called via asyncio.to_thread)
     # ------------------------------------------------------------------
 
-    def _create_kctf_pod(self, req: LaunchRequest, name: str, host_port: int):
+    def _create_kctf_pod(self, req: LaunchRequest, name: str):
         v1 = k8s_client.CoreV1Api()
         pod = k8s_client.V1Pod(
             metadata=k8s_client.V1ObjectMeta(
@@ -129,18 +140,17 @@ class KCTFAdapter(RuntimeAdapter):
             if e.status != 409:
                 raise
 
-    def _create_service(self, req: LaunchRequest, name: str, host_port: int):
+    def _create_service(self, req: LaunchRequest, name: str):
         v1 = k8s_client.CoreV1Api()
         svc = k8s_client.V1Service(
             metadata=k8s_client.V1ObjectMeta(name=name, namespace=KCTF_NAMESPACE),
             spec=k8s_client.V1ServiceSpec(
-                type="NodePort",
+                type="ClusterIP",
                 selector={"app": "isolatex-challenge", "instance-id": req.instance_id[:63]},
                 ports=[
                     k8s_client.V1ServicePort(
                         port=req.port,
                         target_port=req.port,
-                        node_port=host_port,
                     )
                 ],
             ),
@@ -166,8 +176,3 @@ class KCTFAdapter(RuntimeAdapter):
         except ApiException as e:
             if e.status != 404:
                 log.warning("service delete error", name=name, status=e.status)
-
-
-def _allocate_port(instance_id: str) -> int:
-    span = settings.port_range_end - settings.port_range_start
-    return settings.port_range_start + (int(instance_id.replace("-", ""), 16) % span)

@@ -166,6 +166,7 @@ spec:
 | Kernel isolation | Guest kernel (Kata + Firecracker) — kernel exploits trapped in microVM |
 | Minimal attack surface | Firecracker has no legacy device emulation |
 | Network isolation | NetworkPolicy blocks pod-to-pod traffic |
+| Exposure model | Challenge backends stay internal (`ClusterIP`) and are reachable only through the reverse proxy |
 | Resource limits | LimitRange enforces CPU/memory caps |
 | Capabilities | All dropped, seccomp enforced |
 

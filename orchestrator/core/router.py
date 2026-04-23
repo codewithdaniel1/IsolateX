@@ -20,9 +20,13 @@ def instance_subdomain(instance_id: str, challenge_id: str) -> str:
     return f"{short}.{challenge_id}.{settings.base_domain}"
 
 
-async def register_route(instance_id: str, challenge_id: str, worker_address: str, port: int) -> str:
+async def register_route(instance_id: str, challenge_id: str, backend_host: str, backend_port: int) -> str:
     subdomain = instance_subdomain(instance_id, challenge_id)
-    log.info("traefik route registered", subdomain=subdomain, backend=f"{worker_address}:{port}")
+    log.info(
+        "traefik route registered",
+        subdomain=subdomain,
+        backend=f"{backend_host}:{backend_port}",
+    )
     return subdomain
 
 

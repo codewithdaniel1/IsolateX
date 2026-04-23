@@ -273,18 +273,20 @@ async def _launch_on_worker(inst: Instance, challenge: Challenge, worker: Worker
             resp.raise_for_status()
             data = resp.json()
 
-        endpoint = await register_route(str(inst.id), challenge.id, worker.address, data["port"])
+        backend_host = data.get("backend_host") or worker.address
+        backend_port = int(data.get("backend_port") or data.get("port"))
+
+        endpoint = await register_route(str(inst.id), challenge.id, backend_host, backend_port)
         await _wait_for_ready(worker, str(inst.id))
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Instance).where(Instance.id == inst.id))
             record = result.scalar_one()
             record.status = InstanceStatus.running
-            record.backend_port = data["port"]
+            record.backend_host = backend_host
+            record.backend_port = backend_port
             if challenge.protocol == "tcp":
-                record.endpoint = f"tcp://127.0.0.1:{data['port']}"
-            elif settings.base_domain == "localhost":
-                record.endpoint = f"http://127.0.0.1:{data['port']}"
+                record.endpoint = f"tcp://{endpoint}"
             else:
                 record.endpoint = f"https://{endpoint}" if settings.tls_enabled else f"http://{endpoint}"
             await db.commit()

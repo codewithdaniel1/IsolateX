@@ -102,9 +102,7 @@ services:
       ORCHESTRATOR_URL: http://orchestrator:8080
       ORCHESTRATOR_API_KEY: ${API_KEY:?API_KEY must be set in .env}
       WORKER_ID: worker-docker-01
-      WORKER_ADVERTISE_ADDRESS: host.docker.internal
-      DOCKER_NETWORK: isolatex_challenges
-      DOCKER_BIND_HOST: 0.0.0.0
+      WORKER_ADVERTISE_ADDRESS: worker-docker
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./worker:/app
@@ -128,6 +126,7 @@ services:
       DATABASE_URL: mysql+pymysql://ctfd:ctfd@ctfd-db/ctfd
       REDIS_URL: redis://redis:6379/1
       SECRET_KEY: ${CTFD_SECRET_KEY:?CTFD_SECRET_KEY must be set in .env}
+      PERMANENT_SESSION_LIFETIME: ${CTFD_PERMANENT_SESSION_LIFETIME:-2592000}
       ISOLATEX_URL: http://orchestrator:8080
       ISOLATEX_API_KEY: ${API_KEY:?API_KEY must be set in .env}
     depends_on:

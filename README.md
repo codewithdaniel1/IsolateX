@@ -3,7 +3,7 @@
 
 **A CTFd plug-in for per-team challenge instancing.**
 
-IsolateX gives every team their own isolated challenge environment — players click "Launch," get a private endpoint and countdown timer, and the instance auto-stops when time runs out. It works with Docker for local dev and Kubernetes-based runtimes for production.
+IsolateX gives every team their own isolated challenge environment — players click "Launch," get a private endpoint and countdown timer, and the instance auto-stops when time runs out. It works with Docker for local dev and Kubernetes-based runtimes for production. Challenge backends are internal-only and are reachable only through the reverse proxy.
 
 ---
 
@@ -180,7 +180,7 @@ docs/                 Documentation
 - **1 team = 1 instance** — enforced at the orchestrator (409 on duplicate)
 - **Per-team flags** — HMAC(secret + team\_id + challenge\_id + instance\_id + salt); sharing a flag helps nobody
 - **Auto-cleanup** — TTL reaper runs every 30s, destroys expired instances
-- **Network isolation** — containers on an isolated bridge with ICC disabled; Kubernetes NetworkPolicy default-deny in production
+- **Network isolation** — reverse-proxy-only ingress; Docker uses per-instance networks and Kubernetes uses default-deny NetworkPolicy with internal-only services
 - **Kata-FC isolation** — each pod runs inside its own Firecracker microVM with its own kernel
 
 Full details → [docs/security-model.md](docs/security-model.md)

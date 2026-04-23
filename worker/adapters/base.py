@@ -20,8 +20,8 @@ To add a new runtime (e.g. gVisor, Kata Containers, QEMU/KVM):
   6. Document it in docs/adding-a-runtime.md
 
 Your adapter receives a LaunchRequest (all fields the orchestrator knows about the
-challenge) and must return a LaunchResult with the host port the challenge listens on.
-The orchestrator uses that port to register the gateway route.
+challenge) and must return a LaunchResult with the internal backend host/port.
+The orchestrator uses that internal target to register the gateway route.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -49,8 +49,9 @@ class LaunchRequest:
 
 @dataclass
 class LaunchResult:
-    # The host port that traffic should be forwarded to for this instance
-    port: int
+    # Internal backend target for the reverse proxy (never directly exposed to players)
+    backend_host: str
+    backend_port: int
     # Any metadata the adapter wants to store for destroy (stored in memory on the worker)
     metadata: dict
 

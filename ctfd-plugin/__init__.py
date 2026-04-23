@@ -179,6 +179,40 @@ def _get_active_instance(challenge_id: str):
 # Routes
 # ---------------------------------------------------------------------------
 
+@blueprint.route("/authz", methods=["GET"])
+def authorize_instance_route():
+    """
+    Forward-auth endpoint used by the reverse proxy.
+    Allows access only when the current CTFd session owns the requested instance.
+    """
+    instance_id = (request.args.get("instance_id") or "").strip()
+    if not instance_id:
+        return jsonify({"error": "missing instance_id"}), 400
+
+    try:
+        tid = _team_id()
+        resp = httpx.get(
+            _orch(f"/instances/{instance_id}"),
+            headers=_headers(),
+            timeout=5.0,
+        )
+        if resp.status_code == 404:
+            return jsonify({"error": "not found"}), 404
+        resp.raise_for_status()
+        inst = resp.json()
+        if inst.get("team_id") != tid:
+            return jsonify({"error": "forbidden"}), 403
+        if inst.get("status") not in ("running", "pending"):
+            return jsonify({"error": "inactive"}), 403
+        return jsonify({"status": "ok"}), 200
+    except PermissionError:
+        return jsonify({"error": "unauthorized"}), 401
+    except httpx.HTTPStatusError as e:
+        return jsonify({"error": e.response.text}), e.response.status_code
+    except Exception:
+        return jsonify({"error": "auth backend unavailable"}), 503
+
+
 @blueprint.route("/instance/<challenge_id>", methods=["GET"])
 @authed_only
 def get_instance(challenge_id: str):

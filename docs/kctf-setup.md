@@ -85,6 +85,9 @@ The default-deny NetworkPolicy means:
 - Challenge pods can only receive traffic from the IsolateX gateway
 - Challenge pods can resolve DNS (UDP/TCP port 53 is allowed out)
 
+IsolateX exposes challenge backends as internal `ClusterIP` services (not `NodePort`).
+Players reach challenges only through the reverse proxy + CTFd auth checks.
+
 If a challenge needs outbound internet access, add a specific NetworkPolicy
 in the challenge's deployment config. See `infra/kctf/manifests/network-policy.yaml`.
 

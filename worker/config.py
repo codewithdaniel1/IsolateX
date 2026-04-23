@@ -25,7 +25,12 @@ class WorkerSettings(BaseSettings):
 
     # Docker
     docker_network: str = "isolatex_challenges"
+    docker_network_prefix: str = "isolatex_chal_"
+    # Reverse proxy container that should be attached to per-instance networks.
+    # If empty, the worker auto-detects a compose service named "traefik".
+    docker_gateway_container: str = ""
     docker_label_prefix: str = "isolatex"
+    # Kept for compatibility with older configs; secure mode avoids host publishing.
     docker_bind_host: str = "127.0.0.1"
 
     # Port allocation

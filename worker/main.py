@@ -67,8 +67,16 @@ async def launch(payload: LaunchPayload):
     req = LaunchRequest(**payload.model_dump())
     try:
         result = await adapter.launch(req)
-        log.info("launched", instance_id=payload.instance_id, port=result.port)
-        return {"port": result.port, "metadata": result.metadata}
+        log.info(
+            "launched",
+            instance_id=payload.instance_id,
+            backend=f"{result.backend_host}:{result.backend_port}",
+        )
+        return {
+            "backend_host": result.backend_host,
+            "backend_port": result.backend_port,
+            "metadata": result.metadata,
+        }
     except Exception as e:
         log.error("launch failed", instance_id=payload.instance_id, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))

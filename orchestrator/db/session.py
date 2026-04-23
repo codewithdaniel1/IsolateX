@@ -21,6 +21,9 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(
+            text("ALTER TABLE instances ADD COLUMN IF NOT EXISTS backend_host VARCHAR")
+        )
+        await conn.execute(
             text("ALTER TABLE instances ADD COLUMN IF NOT EXISTS backend_port INTEGER")
         )
         await conn.execute(

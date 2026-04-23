@@ -97,6 +97,9 @@ API_KEY=$(openssl rand -hex 32)
 FLAG_HMAC_SECRET=$(openssl rand -hex 32)
 SECRET_KEY=$(openssl rand -hex 32)
 CTFD_SECRET_KEY=$(openssl rand -hex 32)
+# Keep CTFd sessions for ~30 days so users do not re-login often.
+# Default CTFd value is 604800 (7 days).
+CTFD_PERMANENT_SESSION_LIFETIME=2592000
 EOF
 
 docker compose up -d
@@ -291,8 +294,11 @@ RUNTIME=docker \
 ORCHESTRATOR_URL=http://orchestrator:8080 \
 ORCHESTRATOR_API_KEY=$API_KEY \
 WORKER_ADVERTISE_ADDRESS=<worker-host-ip> \
+DOCKER_GATEWAY_CONTAINER=<traefik-container-name> \
 uvicorn main:app --host 0.0.0.0 --port 9090
 ```
+
+`DOCKER_GATEWAY_CONTAINER` should point to the reverse-proxy container that is allowed to reach challenge backends.
 
 ### 5. Install the CTFd plugin
 
@@ -319,7 +325,10 @@ kubectl apply -f gateway/traefik/
 Each instance gets a subdomain: `<instance-prefix>.<challenge-id>.<base-domain>`  
 e.g. `ab12cd34.web100.ctf.yourdomain.com`
 
-For local dev, the endpoint is `http://localhost:<port>` directly.
+For local dev, the endpoint is routed through Traefik:
+`http://<instance-prefix>.<challenge-id>.localhost`
+
+Traefik enforces team ownership via forward-auth to CTFd (`/isolatex/authz`) before proxying traffic.
 
 ---
 
@@ -335,9 +344,10 @@ For local dev, the endpoint is `http://localhost:<port>` directly.
 - Check: `curl http://localhost:8080/workers -H "x-api-key: $API_KEY"`
 
 **Link does not work (connection refused)**
-- For Docker runtime: make sure the `isolatex_challenges` network is not set to `internal: true`
-- Check that the container is actually running: `docker ps --filter "name=isolatex_"`
-- Exec into the container and check the app is listening: `docker exec <name> curl localhost:<port>`
+- Confirm Traefik is healthy and can fetch dynamic config from `/traefik/config`
+- For Docker runtime: check that each instance network exists and Traefik is attached to it
+- Check that the challenge container/pod is actually running and listening on the configured internal port
+- If the URL opens but denies access, verify you are logged into the correct CTFd team (forward-auth enforces team ownership)
 
 **Live Instance panel not showing**
 - The IsolateX plugin is mounted and CTFd restarted? Check CTFd logs for `[IsolateX] plugin loaded`
@@ -347,6 +357,7 @@ For local dev, the endpoint is `http://localhost:<port>` directly.
 **Buttons (Restart/Renew/Stop) not working**
 - Open browser devtools → Network tab → click the button → check the response
 - Make sure you are logged in to CTFd (the plugin uses your session)
+- If players are getting logged out too often, increase `CTFD_PERMANENT_SESSION_LIFETIME` (seconds) in `.env` and restart CTFd
 
 **Renew extends longer than expected**
 - Renew resets `expires_at` to `now + ttl_seconds` for the challenge. If players keep renewing, the instance lifetime can keep extending.

@@ -38,6 +38,7 @@ class Instance(Base):
     runtime      = Column(SAEnum(RuntimeType), nullable=False)
     status       = Column(SAEnum(InstanceStatus), nullable=False, default=InstanceStatus.pending)
     endpoint     = Column(String, nullable=True)
+    backend_host = Column(String, nullable=True)
     backend_port = Column(Integer, nullable=True)
     flag         = Column(String, nullable=True)
     # TTL fields

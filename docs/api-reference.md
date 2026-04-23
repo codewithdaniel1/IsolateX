@@ -75,7 +75,7 @@ Returns:
   "challenge_id": "web100",
   "runtime": "docker",
   "status": "running",
-  "endpoint": "http://localhost:34512",
+  "endpoint": "http://ab12cd34.web100.localhost",
   "expires_at": "2026-04-17T19:30:00Z",
   "started_at": "2026-04-17T19:00:00Z",
   "created_at": "2026-04-17T19:00:00Z"
@@ -85,8 +85,10 @@ Returns:
 **Status values:** `pending` → `running` → `destroyed` / `expired` / `error`
 
 **Endpoint format:**
-- Local dev (`BASE_DOMAIN=localhost`): `http://localhost:<host_port>`
+- Local dev (`BASE_DOMAIN=localhost`): `http://<prefix>.<challenge-id>.localhost`
 - Production: `https://<prefix>.<challenge-id>.<base-domain>`
+
+`endpoint` is always a reverse-proxy URL. Challenge backends are internal-only and are never returned as direct host/node ports.
 
 ---
 
@@ -178,7 +180,7 @@ Called automatically by the worker agent on startup.
 ```json
 {
   "id": "worker-docker-01",
-  "address": "host.docker.internal",
+  "address": "worker-docker",
   "agent_port": 9090,
   "runtime": "docker",
   "max_instances": 50
@@ -199,6 +201,7 @@ Called automatically by the worker agent every 30s.
 GET /traefik/config
 ```
 Returns dynamic route config for Traefik's HTTP provider. Traefik polls this every 5 seconds. Not for direct use.
+Each instance route includes forward-auth against CTFd session ownership.
 
 ---
 

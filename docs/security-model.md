@@ -19,8 +19,9 @@ IsolateX is designed so that even a player who fully compromises their challenge
 
 Weakest isolation — use only for challenges where players cannot get shell access.
 
-- Containers run on an isolated bridge network with ICC (inter-container communication) disabled
-- Host port binding only — not reachable from other containers
+- One isolated Docker network per instance (challenge + gateway only)
+- No host port publishing for challenge containers
+- Reverse proxy is the only ingress path; backend containers are never directly exposed
 - `--cap-drop ALL` and `--security-opt no-new-privileges:true` are available via `extra_config` (`cap_drop=true`)
 - CPU and memory limits enforced
 - **Not recommended** for: pwn, RCE, kernel exploitation, anything where a player can run arbitrary commands inside the container
@@ -30,6 +31,7 @@ Weakest isolation — use only for challenges where players cannot get shell acc
 Medium isolation via Linux namespaces + nsjail.
 
 - One pod per team instance
+- Backends exposed as internal `ClusterIP` services only (no public `NodePort`)
 - Kubernetes NetworkPolicy: default-deny east-west, only gateway can reach challenge pods
 - `runAsNonRoot`, `allowPrivilegeEscalation: false`, all capabilities dropped, `seccomp: RuntimeDefault`
 - Ephemeral pod storage only — no PersistentVolumeClaims
@@ -66,8 +68,9 @@ Properties:
 | Traffic | Allowed? |
 |---|---|
 | Player → gateway (HTTPS) | Yes |
-| Gateway → instance's port | Yes |
-| Instance → another instance | **No** |
+| Player → instance backend directly | **No** |
+| Gateway → instance backend | Yes |
+| Instance → another instance | **No** (per-instance network / NetworkPolicy) |
 | Instance → orchestrator API | **No** |
 | Instance → worker agent | No (default compose); must remain blocked in production firewalling |
 | Instance → Kubernetes API | **No** (kCTF/Kata workers use `automountServiceAccountToken: false`) |
@@ -75,6 +78,7 @@ Properties:
 | Instance → internet | Configurable by network policy/runtime setup |
 | Worker → orchestrator | Yes (API key required) |
 | Orchestrator → worker | Yes (internal network only) |
+| Player with wrong team session → another team's endpoint | **No** (reverse-proxy forward-auth) |
 
 ---
 
