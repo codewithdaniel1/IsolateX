@@ -293,7 +293,7 @@ For Docker runtime (no Kubernetes needed):
 RUNTIME=docker \
 ORCHESTRATOR_URL=http://orchestrator:8080 \
 ORCHESTRATOR_API_KEY=$API_KEY \
-WORKER_ADVERTISE_ADDRESS=<worker-host-ip> \
+ADVERTISE_ADDRESS=<worker-host-ip> \
 DOCKER_GATEWAY_CONTAINER=<traefik-container-name> \
 uvicorn main:app --host 0.0.0.0 --port 9090
 ```

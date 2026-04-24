@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field
 import secrets
+import os
 
 
 class WorkerSettings(BaseSettings):
@@ -9,7 +10,13 @@ class WorkerSettings(BaseSettings):
     listen_port: int = 9090
     orchestrator_url: str = "http://orchestrator:8080"
     orchestrator_api_key: str = ""
-    advertise_address: str = ""
+    # Prefer ADVERTISE_ADDRESS; keep WORKER_ADVERTISE_ADDRESS for backward compatibility.
+    advertise_address: str = Field(
+        default_factory=lambda: (
+            os.getenv("ADVERTISE_ADDRESS")
+            or os.getenv("WORKER_ADVERTISE_ADDRESS", "")
+        )
+    )
 
     # Which runtime this worker handles
     # Each worker process handles exactly ONE runtime type.

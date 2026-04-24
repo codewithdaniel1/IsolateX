@@ -31,6 +31,21 @@ class SetupAutomationTests(unittest.TestCase):
         self.assertIn("ISOLATEX_CAP_KCTF_ENABLED", text)
         self.assertIn("ISOLATEX_CAP_KATA_FIRECRACKER_ENABLED", text)
 
+    def test_worker_advertise_address_uses_standard_env_and_legacy_fallback(self):
+        compose = read("docker-compose.yml")
+        worker_cfg = read("worker/config.py")
+        worker_main = read("worker/main.py")
+        setup_doc = read("docs/setup.md")
+        self.assertIn("ADVERTISE_ADDRESS: worker-docker", compose)
+        self.assertIn('os.getenv("ADVERTISE_ADDRESS")', worker_cfg)
+        self.assertIn('os.getenv("WORKER_ADVERTISE_ADDRESS", "")', worker_cfg)
+        self.assertIn('index .NetworkSettings.Networks', worker_main)
+        self.assertIn("ADVERTISE_ADDRESS=<worker-host-ip>", setup_doc)
+
+    def test_traefik_local_config_keeps_http_entrypoint(self):
+        traefik_cfg = read("gateway/traefik/traefik.yml")
+        self.assertIn("Keep HTTP available for local/dev stacks", traefik_cfg)
+
     def test_plugin_supports_file_based_connection_config(self):
         text = read("ctfd-plugin/__init__.py")
         self.assertIn("PLUGIN_ENV_PATH", text)
@@ -38,6 +53,8 @@ class SetupAutomationTests(unittest.TestCase):
         self.assertIn('_setting("isolatex_url", "ISOLATEX_URL"', text)
         self.assertIn('_setting("isolatex_api_key", "ISOLATEX_API_KEY"', text)
         self.assertIn('@blueprint.route("/admin/runtime-capabilities", methods=["GET"])', text)
+        self.assertIn("def _resolve_challenge_id(challenge_ref: str) -> str | None:", text)
+        self.assertIn('httpx.get(_orch("/challenges"), headers=_headers(), timeout=10.0)', text)
 
     def test_admin_ui_disables_unavailable_runtimes(self):
         text = read("ctfd-plugin/templates/admin.html")
@@ -63,6 +80,17 @@ class SetupAutomationTests(unittest.TestCase):
         self.assertIn("scripts/import-challenges.sh", readme)
         self.assertIn("scripts/import-challenges.sh", setup_doc)
         self.assertIn("scripts/import-challenges.sh", admin_template)
+
+    def test_frontend_slugifies_challenge_marker_and_title(self):
+        text = read("ctfd-plugin/assets/isolatex.js")
+        self.assertIn("function slugify(value)", text)
+        self.assertIn(".replace(/[^a-z0-9]+/g, \"-\")", text)
+        self.assertIn("const cid = slugify(titleEl.textContent || \"\");", text)
+
+    def test_frontend_tcp_endpoint_rendering_is_resilient(self):
+        text = read("ctfd-plugin/assets/isolatex.js")
+        self.assertIn("TCP Endpoint:", text)
+        self.assertIn("String(s ?? \"\")", text)
 
     def test_setup_script_does_not_print_api_key_in_manual_fallback(self):
         text = read("setup.sh")

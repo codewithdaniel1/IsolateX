@@ -57,6 +57,8 @@ class SecurityRegressionTests(unittest.TestCase):
         text = read("ctfd-plugin/__init__.py")
         self.assertIn("def _sanitize_instance_payload(payload: dict) -> dict:", text)
         self.assertIn("redacted.pop(\"flag\", None)", text)
+        self.assertIn("def _is_admin_user() -> bool:", text)
+        self.assertIn("if not is_admin and inst.get(\"team_id\") != tid:", text)
 
     def test_worker_control_endpoints_require_api_key_dependency(self):
         text = read("worker/main.py")
@@ -64,6 +66,13 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn('@app.get("/ready/{instance_id}", dependencies=[Depends(require_worker_api_key)])', text)
         self.assertIn('@app.delete("/destroy/{instance_id}", dependencies=[Depends(require_worker_api_key)])', text)
         self.assertIn('@app.get("/detect-protocol", dependencies=[Depends(require_worker_api_key)])', text)
+        self.assertIn("if resp.status_code == 404:", text)
+        self.assertIn("await _register()", text)
+
+    def test_worker_docker_launch_surfaces_runtime_errors(self):
+        text = read("worker/adapters/docker.py")
+        self.assertIn("await _run(*cmd, capture=True)", text)
+        self.assertNotIn("network_name,\n            check=False,", text)
 
     def test_orchestrator_worker_calls_forward_api_key(self):
         inst = read("orchestrator/api/instances.py")
@@ -73,10 +82,21 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn('headers={"x-api-key": settings.api_key}', inst)
         self.assertIn('headers={"x-api-key": settings.api_key}', chal)
         self.assertIn('headers={"x-api-key": settings.api_key}', sched)
+        self.assertIn('"expose_tcp_port": (', inst)
+        self.assertIn('record.endpoint = f"tcp://{public_host}:{public_port}"', inst)
+        self.assertIn("async def _wait_for_http_route(", inst)
+        self.assertIn("if challenge.protocol != \"tcp\":", inst)
 
     def test_traefik_config_endpoint_requires_api_key(self):
         text = read("orchestrator/api/traefik.py")
-        self.assertIn('@router.get("/config", dependencies=[Depends(require_api_key)])', text)
+        self.assertIn('@router.get("/config")', text)
+        self.assertIn("if not (settings.base_domain == \"localhost\" and not settings.tls_enabled):", text)
+        self.assertIn("await require_api_key(x_api_key=x_api_key)", text)
+        self.assertIn("localhost_dev = settings.base_domain == \"localhost\" and not settings.tls_enabled", text)
+        self.assertIn("route_middlewares = [] if localhost_dev else [auth_key]", text)
+        self.assertIn("if route_middlewares:", text)
+        self.assertIn("if middlewares:", text)
+        self.assertIn("InstanceStatus.pending", text)
 
     def test_orchestrator_has_no_wildcard_cors(self):
         text = read("orchestrator/main.py")

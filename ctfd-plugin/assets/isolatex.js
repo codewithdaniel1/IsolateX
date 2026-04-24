@@ -54,21 +54,28 @@
   }
 
   function autoInjectPanel() {
-    const titleEl = document.querySelector(".challenge-name");
+    const titleEl =
+      document.querySelector(".challenge-name") ||
+      document.querySelector(".challenge-modal .modal-title") ||
+      document.querySelector(".modal-title");
     if (!titleEl) return;
 
-    const cid = titleEl.textContent?.trim().toLowerCase().replace(/\s+/g, "-") || "";
+    const cid = slugify(titleEl.textContent || "");
     if (!cid || document.querySelector(`[data-isolatex-challenge="${cid}"]`)) return;
 
     // Insert after the challenge description span (CTFd core theme: .challenge-desc)
-    const insertAfter = document.querySelector(".challenge-desc") ||
-                        document.querySelector(".challenge-description") ||
-                        titleEl;
+    const insertAfter =
+      document.querySelector(".challenge-desc") ||
+      document.querySelector(".challenge-description") ||
+      document.querySelector("[data-description]") ||
+      titleEl;
 
     const panel = document.createElement("div");
     panel.setAttribute("data-isolatex-challenge", cid);
     panel.style.marginTop = "1rem";
-    insertAfter.parentNode.insertBefore(panel, insertAfter.nextSibling);
+    if (insertAfter.parentNode) {
+      insertAfter.parentNode.insertBefore(panel, insertAfter.nextSibling);
+    }
   }
 
   function scanPanels() {
@@ -82,20 +89,30 @@
 
   function scanDescriptions() {
     // Look for challenge description elements that contain our marker
-    document.querySelectorAll("[data-description]").forEach((el) => {
+    document.querySelectorAll("[data-description], .challenge-desc, .challenge-description").forEach((el) => {
       if (el._ixScanned) return;
       el._ixScanned = true;
 
-      const desc = el.getAttribute("data-description") || el.textContent;
-      const match = desc.match(/data-isolatex-challenge="([^"]+)"/);
+      const desc = el.getAttribute("data-description") || el.innerHTML || el.textContent;
+      const match = desc.match(/data-isolatex-challenge=["']([^"']+)["']/i);
       if (match) {
-        const cid = match[1];
+        const cid = slugify(match[1]);
+        if (!cid || document.querySelector(`[data-isolatex-challenge="${cid}"]`)) return;
         // Create and insert a panel after the description
         const panel = document.createElement("div");
         panel.setAttribute("data-isolatex-challenge", cid);
-        el.parentNode.insertBefore(panel, el.nextSibling);
+        if (el.parentNode) {
+          el.parentNode.insertBefore(panel, el.nextSibling);
+        }
       }
     });
+  }
+
+  function slugify(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
   }
 
   // -------------------------------------------------------------------------
@@ -167,6 +184,10 @@
   }
 
   function render(ctx, data) {
+    if (data.challenge_id && data.challenge_id !== ctx.cid) {
+      ctx.cid = data.challenge_id;
+    }
+
     clearMsg(ctx);
     stopTimer(ctx);
     setLaunchPending(ctx, false);
@@ -197,10 +218,17 @@
 
       if (data.endpoint) {
         if (data.endpoint.startsWith("tcp://")) {
-          const parts = data.endpoint.slice(6).split(":");
-          const host = parts[0], port = parts[1];
-          ctx.endpoint.innerHTML =
-            `Connect: <code class="text-info">nc ${esc(host)} ${esc(port)}</code>`;
+          const target = data.endpoint.slice(6);
+          const parts = target.split(":");
+          const host = parts[0];
+          const port = parts[1];
+          if (host && port) {
+            ctx.endpoint.innerHTML =
+              `Connect: <code class="text-info">nc ${esc(host)} ${esc(port)}</code>`;
+          } else {
+            ctx.endpoint.innerHTML =
+              `TCP Endpoint: <code class="text-info">${esc(target)}</code>`;
+          }
         } else {
           ctx.endpoint.innerHTML =
             `Endpoint: <a href="${esc(data.endpoint)}" target="_blank" rel="noopener"
@@ -377,7 +405,7 @@
   function show(el) { el.style.display = ""; }
   function hide(el) { el.style.display = "none"; }
   function pad(n)   { return String(n).padStart(2, "0"); }
-  function esc(s)   { return s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  function esc(s)   { return String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
   // -------------------------------------------------------------------------
   // API helpers

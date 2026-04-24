@@ -102,7 +102,7 @@ services:
       ORCHESTRATOR_URL: http://orchestrator:8080
       ORCHESTRATOR_API_KEY: ${API_KEY:?API_KEY must be set in .env}
       WORKER_ID: worker-docker-01
-      WORKER_ADVERTISE_ADDRESS: worker-docker
+      ADVERTISE_ADDRESS: worker-docker
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./worker:/app

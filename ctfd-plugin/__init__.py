@@ -24,6 +24,7 @@ from CTFd.plugins import register_plugin_assets_directory, register_admin_plugin
 from CTFd.models import Challenges
 import httpx
 import os
+import re
 from pathlib import Path
 
 blueprint = Blueprint("isolatex", __name__, template_folder="templates",
@@ -83,6 +84,41 @@ def _orch(path: str) -> str:
 
 def _headers():
     return {"x-api-key": _api_key(), "content-type": "application/json"}
+
+
+def _slugify(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
+
+
+def _resolve_challenge_id(challenge_ref: str) -> str | None:
+    """
+    Resolve UI-provided challenge references to an orchestrator challenge id.
+    Supports exact id and title-derived slug aliases.
+    """
+    candidate = (challenge_ref or "").strip()
+    if not candidate:
+        return None
+
+    # Fast path: exact id already registered in orchestrator.
+    exact = httpx.get(_orch(f"/challenges/{candidate}"), headers=_headers(), timeout=5.0)
+    if exact.status_code == 200:
+        return candidate
+    if exact.status_code != 404:
+        exact.raise_for_status()
+
+    # Fallback: map title-like slugs to a registered challenge by name.
+    normalized = _slugify(candidate)
+    if not normalized:
+        return None
+
+    all_challenges = httpx.get(_orch("/challenges"), headers=_headers(), timeout=10.0)
+    all_challenges.raise_for_status()
+
+    for challenge in all_challenges.json():
+        cid = str(challenge.get("id") or "").strip()
+        if cid and (cid == normalized or _slugify(challenge.get("name") or "") == normalized):
+            return cid
+    return None
 
 
 def _sanitize_instance_payload(payload: dict) -> dict:
@@ -166,6 +202,21 @@ def _team_id() -> str:
     raise PermissionError("authentication required")
 
 
+def _is_admin_user() -> bool:
+    """
+    Best-effort admin detection across CTFd versions.
+    """
+    user = get_current_user()
+    if not user:
+        return False
+    user_type = str(getattr(user, "type", "")).lower()
+    return bool(
+        getattr(user, "admin", False)
+        or getattr(user, "is_admin", False)
+        or user_type == "admin"
+    )
+
+
 def _get_active_instance(challenge_id: str):
     tid = _team_id()
     return httpx.get(
@@ -190,7 +241,8 @@ def authorize_instance_route():
         return jsonify({"error": "missing instance_id"}), 400
 
     try:
-        tid = _team_id()
+        is_admin = _is_admin_user()
+        tid = None if is_admin else _team_id()
         resp = httpx.get(
             _orch(f"/instances/{instance_id}"),
             headers=_headers(),
@@ -200,7 +252,7 @@ def authorize_instance_route():
             return jsonify({"error": "not found"}), 404
         resp.raise_for_status()
         inst = resp.json()
-        if inst.get("team_id") != tid:
+        if not is_admin and inst.get("team_id") != tid:
             return jsonify({"error": "forbidden"}), 403
         if inst.get("status") not in ("running", "pending"):
             return jsonify({"error": "inactive"}), 403
@@ -217,19 +269,14 @@ def authorize_instance_route():
 @authed_only
 def get_instance(challenge_id: str):
     try:
-        # Check if this challenge is registered for instancing
-        chal_resp = httpx.get(
-            _orch(f"/challenges/{challenge_id}"),
-            headers=_headers(),
-            timeout=5.0,
-        )
-        if chal_resp.status_code == 404:
+        resolved_challenge_id = _resolve_challenge_id(challenge_id)
+        if not resolved_challenge_id:
             # Not an instanced challenge — tell the JS to hide the panel
             return jsonify({"status": "not_instanced"}), 404
 
-        resp = _get_active_instance(challenge_id)
+        resp = _get_active_instance(resolved_challenge_id)
         if resp.status_code == 404:
-            return jsonify({"status": "none"}), 200
+            return jsonify({"status": "none", "challenge_id": resolved_challenge_id}), 200
         resp.raise_for_status()
         return jsonify(_sanitize_instance_payload(resp.json()))
     except PermissionError as e:
@@ -245,14 +292,18 @@ def get_instance(challenge_id: str):
 def launch_instance(challenge_id: str):
     tid = _team_id()
     try:
+        resolved_challenge_id = _resolve_challenge_id(challenge_id)
+        if not resolved_challenge_id:
+            return jsonify({"status": "not_instanced"}), 404
+
         resp = httpx.post(
             _orch("/instances"),
-            json={"team_id": tid, "challenge_id": challenge_id},
+            json={"team_id": tid, "challenge_id": resolved_challenge_id},
             headers=_headers(),
             timeout=30.0,
         )
         if resp.status_code == 409:
-            return get_instance(challenge_id)
+            return get_instance(resolved_challenge_id)
         resp.raise_for_status()
         return jsonify(_sanitize_instance_payload(resp.json())), 201
     except PermissionError as e:
@@ -267,7 +318,11 @@ def launch_instance(challenge_id: str):
 @authed_only
 def stop_instance(challenge_id: str):
     try:
-        inst_resp = _get_active_instance(challenge_id)
+        resolved_challenge_id = _resolve_challenge_id(challenge_id)
+        if not resolved_challenge_id:
+            return jsonify({"status": "not_instanced"}), 404
+
+        inst_resp = _get_active_instance(resolved_challenge_id)
         if inst_resp.status_code == 404:
             return jsonify({"status": "none"}), 200
         inst_resp.raise_for_status()
@@ -292,7 +347,11 @@ def stop_instance(challenge_id: str):
 def restart_instance(challenge_id: str):
     """Stop and relaunch. TTL resets to the full challenge default."""
     try:
-        inst_resp = _get_active_instance(challenge_id)
+        resolved_challenge_id = _resolve_challenge_id(challenge_id)
+        if not resolved_challenge_id:
+            return jsonify({"status": "not_instanced"}), 404
+
+        inst_resp = _get_active_instance(resolved_challenge_id)
         if inst_resp.status_code == 404:
             return jsonify({"error": "no active instance to restart"}), 404
         inst_resp.raise_for_status()
@@ -317,7 +376,11 @@ def restart_instance(challenge_id: str):
 def renew_instance(challenge_id: str):
     """Extend the TTL. Capped at 2 hours from the current time."""
     try:
-        inst_resp = _get_active_instance(challenge_id)
+        resolved_challenge_id = _resolve_challenge_id(challenge_id)
+        if not resolved_challenge_id:
+            return jsonify({"status": "not_instanced"}), 404
+
+        inst_resp = _get_active_instance(resolved_challenge_id)
         if inst_resp.status_code == 404:
             return jsonify({"error": "no active instance to renew"}), 404
         inst_resp.raise_for_status()

@@ -18,12 +18,15 @@ api:
 entryPoints:
   web:
     address: ":80"
-    http:
-      redirections:
-        entryPoint:
-          to: websecure
-          scheme: https
-          permanent: true
+    # Keep HTTP available for local/dev stacks where TLS is disabled and
+    # endpoints are returned as http://<instance>.<challenge>.localhost.
+    # If you want global HTTPS redirect in production, re-enable the block below.
+    # http:
+    #   redirections:
+    #     entryPoint:
+    #       to: websecure
+    #       scheme: https
+    #       permanent: true
 
   websecure:
     address: ":443"

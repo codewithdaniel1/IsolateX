@@ -33,6 +33,7 @@ class LaunchRequest:
     instance_id: str
     challenge_id: str
     runtime: str
+    protocol: str
     # microVM fields
     kernel_image: Optional[str]
     rootfs_image: Optional[str]
@@ -43,8 +44,10 @@ class LaunchRequest:
     memory_mb: int
     port: int
     flag: str
+    # local-dev convenience: publish TCP challenge port to host when enabled
+    expose_tcp_port: bool = False
     # arbitrary runtime-specific config as JSON string
-    extra_config: Optional[str]
+    extra_config: Optional[str] = None
 
 
 @dataclass

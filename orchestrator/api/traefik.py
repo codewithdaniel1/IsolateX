@@ -6,7 +6,7 @@ Traefik dynamic configuration so Traefik knows where to route each subdomain.
 
 Nginx operators: see gateway/nginx/ for the sidecar reload approach instead.
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import structlog
@@ -21,16 +21,27 @@ router = APIRouter(prefix="/traefik", tags=["gateway"])
 log = structlog.get_logger()
 
 
-@router.get("/config", dependencies=[Depends(require_api_key)])
-async def traefik_config(db: AsyncSession = Depends(get_db)):
+@router.get("/config")
+async def traefik_config(
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: AsyncSession = Depends(get_db),
+):
+    # Dev mode: Traefik HTTP provider cannot attach API-key headers in our default stack.
+    # Allow internal unauthenticated polling only for localhost/no-TLS deployments.
+    if not (settings.base_domain == "localhost" and not settings.tls_enabled):
+        await require_api_key(x_api_key=x_api_key)
+
     result = await db.execute(
-        select(Instance).where(Instance.status == InstanceStatus.running)
+        select(Instance).where(
+            Instance.status.in_([InstanceStatus.running, InstanceStatus.pending])
+        )
     )
     rows = result.scalars().all()
 
     routers = {}
     services = {}
     middlewares = {}
+    localhost_dev = settings.base_domain == "localhost" and not settings.tls_enabled
 
     for inst in rows:
         if not inst.backend_host or inst.backend_port is None:
@@ -47,23 +58,30 @@ async def traefik_config(db: AsyncSession = Depends(get_db)):
         auth_key = f"auth-{key}"
         auth_url = f"{settings.ctfd_url.rstrip('/')}/isolatex/authz?instance_id={inst.id}"
 
-        routers[key] = {
+        route_middlewares = [] if localhost_dev else [auth_key]
+        router_cfg = {
             "rule": f"Host(`{subdomain}`)",
             "service": key,
             "entryPoints": ["websecure" if settings.tls_enabled else "web"],
-            "middlewares": [auth_key],
             **({"tls": {"certResolver": "letsencrypt"}} if settings.tls_enabled else {}),
         }
+        if route_middlewares:
+            router_cfg["middlewares"] = route_middlewares
+        routers[key] = router_cfg
         services[key] = {
             "loadBalancer": {
                 "servers": [{"url": f"http://{inst.backend_host}:{inst.backend_port}"}]
             }
         }
-        middlewares[auth_key] = {
-            "forwardAuth": {
-                "address": auth_url,
-                "trustForwardHeader": True,
+        if not localhost_dev:
+            middlewares[auth_key] = {
+                "forwardAuth": {
+                    "address": auth_url,
+                    "trustForwardHeader": True,
+                }
             }
-        }
 
-    return {"http": {"routers": routers, "services": services, "middlewares": middlewares}}
+    http_cfg = {"routers": routers, "services": services}
+    if middlewares:
+        http_cfg["middlewares"] = middlewares
+    return {"http": http_cfg}

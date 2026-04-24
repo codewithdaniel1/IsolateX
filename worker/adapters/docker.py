@@ -86,7 +86,6 @@ class DockerAdapter(RuntimeAdapter):
             "--driver",
             "bridge",
             network_name,
-            check=False,
         )
 
         cmd = [
@@ -103,6 +102,10 @@ class DockerAdapter(RuntimeAdapter):
             "--pids-limit", str(extra.get("pids_limit", 256)),
         ]
 
+        if req.protocol == "tcp" and req.expose_tcp_port:
+            # Local-dev convenience: publish a random loopback port for TCP challenges.
+            cmd += ["-p", f"127.0.0.1::{req.port}"]
+
         # Hardening — only applied when explicitly requested via extra_config
         # Docker runtime is for local dev; kCTF/Kata-FC handle production hardening
         if extra.get("cap_drop"):
@@ -111,9 +114,32 @@ class DockerAdapter(RuntimeAdapter):
         cmd += [req.image]
 
         try:
-            await _run(*cmd)
+            # Capture stderr so launch failures include Docker's real error message.
+            await _run(*cmd, capture=True)
             gateway = await self._resolve_gateway_container()
             await _run("docker", "network", "connect", network_name, gateway, check=False)
+
+            public_host = None
+            public_port = None
+            if req.protocol == "tcp" and req.expose_tcp_port:
+                out = await _run(
+                    "docker",
+                    "port",
+                    container_name,
+                    f"{req.port}/tcp",
+                    capture=True,
+                    check=False,
+                )
+                line = out.decode(errors="ignore").strip().splitlines()
+                if line:
+                    target = line[0].strip()
+                    if ":" in target:
+                        public_host, public_port_raw = target.rsplit(":", 1)
+                        public_host = public_host or "127.0.0.1"
+                        try:
+                            public_port = int(public_port_raw)
+                        except ValueError:
+                            public_port = None
 
             metadata = {
                 "container_name": container_name,
@@ -122,6 +148,8 @@ class DockerAdapter(RuntimeAdapter):
                 "gateway_container": gateway,
                 "backend_host": container_name,
                 "backend_port": req.port,
+                "public_host": public_host,
+                "public_port": public_port,
             }
             self._instances[req.instance_id] = metadata
             log.info(

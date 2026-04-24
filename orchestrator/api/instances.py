@@ -253,17 +253,45 @@ async def _wait_for_ready(worker: Worker, instance_id: str, timeout: int = 30, i
     log.warning("readiness check timed out", instance_id=instance_id)
 
 
+async def _wait_for_http_route(endpoint_host: str, timeout: int = 10, interval: float = 0.5) -> None:
+    """
+    Wait until Traefik has picked up the dynamic router for this host.
+    Avoids short-lived 404s right after status flips to running.
+    """
+    import asyncio
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            async with httpx.AsyncClient(timeout=3.0, follow_redirects=False) as client:
+                resp = await client.get("http://traefik/", headers={"Host": endpoint_host})
+                # 404 means route not propagated yet; any other status means router exists.
+                if resp.status_code != 404:
+                    return
+        except Exception:
+            pass
+        await asyncio.sleep(interval)
+    log.warning("route propagation timed out", endpoint_host=endpoint_host)
+
+
 async def _launch_on_worker(inst: Instance, challenge: Challenge, worker: Worker):
     from orchestrator.db.session import AsyncSessionLocal
     payload = {
         "instance_id": str(inst.id),
         "challenge_id": challenge.id,
         "runtime": challenge.runtime.value,
+        "protocol": challenge.protocol,
         "image": challenge.image,
         "cpu_count": challenge.cpu_count,
         "memory_mb": challenge.memory_mb,
         "port": challenge.port,
         "flag": inst.flag,
+        "expose_tcp_port": (
+            challenge.protocol == "tcp"
+            and settings.base_domain == "localhost"
+            and not settings.tls_enabled
+        ),
         "extra_config": challenge.extra_config,
     }
     url = f"http://{worker.address}:{worker.agent_port}/launch"
@@ -276,8 +304,19 @@ async def _launch_on_worker(inst: Instance, challenge: Challenge, worker: Worker
         backend_host = data.get("backend_host") or worker.address
         backend_port = int(data.get("backend_port") or data.get("port"))
 
+        # Persist backend target immediately so Traefik can expose a route while
+        # the instance is still pending.
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(Instance).where(Instance.id == inst.id))
+            pending_record = result.scalar_one()
+            pending_record.backend_host = backend_host
+            pending_record.backend_port = backend_port
+            await db.commit()
+
         endpoint = await register_route(str(inst.id), challenge.id, backend_host, backend_port)
         await _wait_for_ready(worker, str(inst.id))
+        if challenge.protocol != "tcp":
+            await _wait_for_http_route(endpoint)
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Instance).where(Instance.id == inst.id))
@@ -286,7 +325,13 @@ async def _launch_on_worker(inst: Instance, challenge: Challenge, worker: Worker
             record.backend_host = backend_host
             record.backend_port = backend_port
             if challenge.protocol == "tcp":
-                record.endpoint = f"tcp://{endpoint}"
+                meta = data.get("metadata") or {}
+                public_host = meta.get("public_host")
+                public_port = meta.get("public_port")
+                if public_host and public_port:
+                    record.endpoint = f"tcp://{public_host}:{public_port}"
+                else:
+                    record.endpoint = f"tcp://{endpoint}:{challenge.port}"
             else:
                 record.endpoint = f"https://{endpoint}" if settings.tls_enabled else f"http://{endpoint}"
             await db.commit()

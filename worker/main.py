@@ -34,6 +34,7 @@ class LaunchPayload(BaseModel):
     instance_id: str
     challenge_id: str
     runtime: str
+    protocol: str = "http"
     kernel_image: Optional[str] = None
     rootfs_image: Optional[str] = None
     image: Optional[str] = None
@@ -41,6 +42,7 @@ class LaunchPayload(BaseModel):
     memory_mb: int = 512
     port: int = 8888
     flag: str
+    expose_tcp_port: bool = False
     extra_config: Optional[str] = None
 
 
@@ -101,9 +103,12 @@ async def ready(instance_id: str):
 
 
 async def _container_ip(container_name: str, network: str) -> str:
+    # Network names contain dashes; use index() instead of dot-notation to avoid
+    # Go-template parsing issues in docker inspect --format.
+    fmt = f'{{{{(index .NetworkSettings.Networks "{network}").IPAddress}}}}'
     proc = await asyncio.create_subprocess_exec(
         "docker", "inspect",
-        "--format", f"{{{{.NetworkSettings.Networks.{network}.IPAddress}}}}",
+        "--format", fmt,
         container_name,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
     )
@@ -153,7 +158,7 @@ async def health():
 # Orchestrator registration and heartbeat
 # ---------------------------------------------------------------------------
 
-async def _register():
+async def _register() -> bool:
     payload = {
         "id": settings.worker_id,
         "address": _self_address(),
@@ -170,8 +175,10 @@ async def _register():
             )
             resp.raise_for_status()
             log.info("registered with orchestrator", worker_id=settings.worker_id)
+            return True
     except Exception as e:
         log.error("registration failed", error=str(e))
+        return False
 
 
 async def _deregister():
@@ -186,15 +193,25 @@ async def _deregister():
 
 
 async def _heartbeat_loop():
+    registered = False
     while True:
+        if not registered:
+            registered = await _register()
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(
+                resp = await client.post(
                     f"{settings.orchestrator_url}/workers/{settings.worker_id}/heartbeat",
                     headers={"x-api-key": settings.orchestrator_api_key},
                 )
+                # If orchestrator restarted and forgot this worker row, self-heal by re-registering.
+                if resp.status_code == 404:
+                    registered = False
+                elif resp.status_code >= 400:
+                    log.warning("heartbeat rejected", status_code=resp.status_code)
+                    registered = False
         except Exception as e:
             log.warning("heartbeat failed", error=str(e))
+            registered = False
         await asyncio.sleep(settings.heartbeat_interval_seconds)
 
 
